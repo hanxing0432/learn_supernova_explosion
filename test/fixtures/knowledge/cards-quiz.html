@@ -1,0 +1,36 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>章节任务条（真实结构）</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #f6f8fc; padding: 24px; }
+  .prev_list { display: flex; gap: 14px; margin-bottom: 20px; list-style: none; padding: 0; }
+  .prev_white { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer; }
+  .prev_white .num { width: 20px; height: 20px; border-radius: 50%; background: #2563eb; color: #fff; text-align: center; line-height: 20px; font-size: 12px; }
+  #prevNextFocusNext { padding: 8px 22px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 320px; height: 140px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style></head>
+<body>
+  <div class="ans-job-video" aria-label="任务点已完成" style="display:none"></div>
+  <ul class="prev_list">
+    <li class="prev_white"><span class="num">1</span><span class="spanText">学习视频</span></li>
+    <li class="prev_white" id="quizItem"><span class="num">2</span><span class="spanText">学习测验</span></li>
+  </ul>
+  <button id="prevNextFocusNext">下一节</button>
+  <pre id="test-report">{}</pre>
+<script>
+(function () {
+  const state = { quizClicks: 0, nextClicks: 0, events: [] };
+  document.getElementById('quizItem').addEventListener('click', function (e) {
+    state.quizClicks++;
+    state.events.push('quiz:' + (e.target.className || e.target.tagName));
+  });
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () {
+    state.nextClicks++;
+    state.events.push('next');
+  });
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify(state);
+  }, 250);
+})();
+</script>
+</body></html>

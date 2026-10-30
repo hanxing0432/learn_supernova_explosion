@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>国家安全的重要性</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #f5f7fb; margin: 0; padding: 16px; }
+  .toc { width: 320px; background: #fff; border-radius: 8px; padding: 10px; }
+  .posCatalog_select { padding: 4px 6px; cursor: pointer; border-radius: 4px; }
+  .posCatalog_select:hover { background: #eef2ff; }
+  .posCatalog_select.active { background: #e0ebff; }
+  #prevNextFocusNext { margin-top: 14px; padding: 8px 22px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 120px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style></head>
+<body>
+  <div class="ans-job-video" aria-label="学习视频 任务点已完成"></div>
+<div class="ans-job-work" aria-label="学习测验 任务点已完成"></div>
+<div class="toc">
+    <div class="posCatalog_select"><span>1.2 国家安全</span></div>
+    <div class="posCatalog_select active"><span class="posCatalog_name" onclick="getTeacherAjax('266214610','157743790','1207354213','573914416','','','false')">1.2.1 国家安全的重要性</span></div>
+    <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('266214610','157743790','1207354476','573914416','','','false')">1.2.2 总体国家安全观内涵</span></div>
+    <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('266214610','157743790','1207354477','573914416','','','false')">1.2.3 全面认识国家安全</span></div>
+  </div>
+  <button id="prevNextFocusNext">下一节</button>
+  <pre id="test-report">{}</pre>
+<script>
+(function () {
+  const state = { tocClicks: 0, nextClicks: 0, tocTarget: '', events: [] };
+  document.querySelectorAll('.posCatalog_name').forEach(function (sp) {
+    sp.addEventListener('click', function () {
+      state.tocClicks++;
+      state.tocTarget = sp.innerText.trim();
+      state.events.push('toc:' + state.tocTarget);
+    });
+  });
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () {
+    state.nextClicks++;
+    state.events.push('next');
+  });
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify(state);
+  }, 250);
+})();
+</script>
+</body></html>

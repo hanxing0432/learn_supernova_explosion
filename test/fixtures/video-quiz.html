@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>学习视频（弹题仿真）</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px/1.7 "Microsoft YaHei", sans-serif; }
+  .player { position: relative; width: 720px; height: 405px; margin: 30px auto; background: #000; border-radius: 8px; overflow: hidden; }
+  .ans-videoquiz {
+    position: absolute; inset: 0; background: rgba(8, 14, 26, .94); padding: 26px 30px; display: block;
+  }
+  .tkTopic_title { font-size: 16px; font-weight: 600; margin-bottom: 14px; color: #fff; }
+  ul.ans-videoquiz-options { list-style: none; margin: 0; padding: 0; }
+  ul.ans-videoquiz-options li { padding: 7px 10px; margin-bottom: 6px; border: 1px solid #2b3a55; border-radius: 6px; cursor: pointer; }
+  ul.ans-videoquiz-options li:hover { background: #16233b; }
+  #videoquiz-submit { display: inline-block; margin-top: 10px; background: #2563eb; color: #fff; padding: 7px 22px; border-radius: 6px; cursor: pointer; }
+  #spanHas, #spanNot { margin-left: 12px; font-weight: 600; }
+  #spanHas { color: #22c55e; }
+  #spanNot { color: #f87171; }
+  .ans-videoquiz-continue { display: none; margin-left: 14px; background: #16a34a; color: #fff; padding: 7px 20px; border-radius: 6px; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 320px; height: 140px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="player">
+  <div class="ans-videoquiz" id="quizBox">
+    <div class="tkTopic_title">【多选题】下列哪些属于学习通任务点类型（ ）</div>
+    <ul class="ans-videoquiz-options">
+      <li class="ans-videoquiz-opt"><input type="checkbox" name="vq" value="A"><span>A、视频</span></li>
+      <li class="ans-videoquiz-opt"><input type="checkbox" name="vq" value="B"><span>B、文档</span></li>
+      <li class="ans-videoquiz-opt"><input type="checkbox" name="vq" value="C"><span>C、讨论</span></li>
+      <li class="ans-videoquiz-opt"><input type="checkbox" name="vq" value="D"><span>D、测验</span></li>
+    </ul>
+    <div id="videoquiz-submit" class="ans-videoquiz-btn">提交</div>
+    <span id="spanHas" style="display:none">回答正确</span>
+    <span id="spanNot" style="display:none">回答错误</span>
+    <a class="ans-videoquiz-continue" id="continueBtn">继续学习</a>
+  </div>
+</div>
+<pre id="test-report">{}</pre>
+<script>
+(function () {
+  const KEY = ['A', 'B', 'D'];
+  const state = { submits: 0, wrongs: 0, rights: 0, continued: false, events: [] };
+  const log = (e) => state.events.push(e);
+
+  function selected() {
+    return Array.from(document.querySelectorAll('#quizBox input')).filter((i) => i.checked).map((i) => i.value).sort();
+  }
+
+  document.getElementById('videoquiz-submit').addEventListener('click', () => {
+    state.submits++;
+    const sel = selected();
+    const ok = JSON.stringify(sel) === JSON.stringify(KEY.slice().sort());
+    log('submit:' + sel.join('') + ':' + (ok ? 'right' : 'wrong'));
+    document.getElementById('spanHas').style.display = ok ? 'inline' : 'none';
+    document.getElementById('spanNot').style.display = ok ? 'none' : 'inline';
+    document.getElementById('continueBtn').style.display = ok ? 'inline-block' : 'none';
+    if (ok) state.rights++; else state.wrongs++;
+  });
+
+  document.getElementById('continueBtn').addEventListener('click', () => {
+    state.continued = true;
+    log('continue-clicked');
+    document.getElementById('quizBox').style.display = 'none';
+  });
+
+  window.__fixture = state;
+  setInterval(() => {
+    document.getElementById('test-report').textContent = JSON.stringify({
+      submits: state.submits,
+      wrongs: state.wrongs,
+      rights: state.rights,
+      continued: state.continued,
+      events: state.events,
+      selections: selected()
+    });
+  }, 300);
+})();
+</script>
+</body>
+</html>

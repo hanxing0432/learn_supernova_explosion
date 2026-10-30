@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>课程最后一节（任务点全完成、目录没有下一项）</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #ccc; font: 13px/1.6 "Microsoft YaHei", sans-serif; }
+  .toc { position: absolute; left: -9999px; top: 0; width: 300px; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 320px; height: 150px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h3>1.9.9 课程收尾页（仿真）</h3>
+<p>任务点均已达标，右侧目录只有本章一项，页面上也没有跳转控件。</p>
+
+<div class="ans-job-video" aria-label="学习视频 任务点已完成"></div>
+<div class="ans-job-work" aria-label="学习测验 任务点已完成"></div>
+
+<div class="toc">
+  <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('111','222','1','444','','','false')">1.9.9 当前章节</span></div>
+</div>
+
+<pre id="test-report">{}</pre>
+<script>
+(function () {
+  setInterval(function () {
+    var nav = window.CX && window.CX.nav;
+    document.getElementById('test-report').textContent = JSON.stringify({
+      stopped: !!(nav && nav.state && nav.state.stopped),
+      clicks: nav && nav.state ? nav.state.clicks : 0
+    });
+  }, 400);
+})();
+</script>
+</body>
+</html>

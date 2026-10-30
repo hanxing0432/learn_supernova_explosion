@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>学习通全自动助手 · 设置</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <div class="titles">
+      <h1>学习通全自动助手</h1>
+      <p class="sub">自动播放 · 弹题作答 · 学完下一节 · 学习检测 AI 答题</p>
+    </div>
+    <div class="tools">
+      <input id="q" type="search" placeholder="搜索设置…（Esc 清空）" autocomplete="off" spellcheck="false">
+      <button id="btn-test" class="ghost">测试 AI 连接</button>
+      <button id="btn-save" class="primary">保存</button>
+    </div>
+  </div>
+
+  <div id="saveHint" class="hint"></div>
+
+  <main>
+    <section class="card quick" id="quickCard">
+      <h2>常用<span class="tag">日常只要这几个</span></h2>
+      <div id="quick"></div>
+    </section>
+
+    <div id="sections"></div>
+
+    <div id="emptyHint" class="empty" hidden>没有匹配的设置</div>
+
+    <section class="card" id="dataCard">
+      <h2>数据与备份</h2>
+      <div class="btnrow">
+        <button id="btn-export" class="ghost">导出配置 JSON</button>
+        <button id="btn-import" class="ghost">导入配置 JSON</button>
+        <input type="file" id="file-import" accept="application/json" hidden>
+        <button id="btn-clearbank" class="ghost">清空答案缓存</button>
+        <span class="sp"></span>
+        <button id="btn-default" class="ghost danger">恢复默认</button>
+      </div>
+      <p class="tip">配置只存在本机 <code>chrome.storage.local</code>。导出的 JSON 里含 API Key，别外传。</p>
+    </section>
+
+    <details class="card" id="debugCard" data-open-id="debug">
+      <summary><span class="st">调试</span><span class="tag warn">一般用不到</span></summary>
+      <div class="cardbody">
+        <div id="debugSwitch"></div>
+        <div id="debugExtra" hidden>
+          <div id="debugFields"></div>
+          <div class="logs-head">
+            <span>实时日志</span>
+            <span class="sp"></span>
+            <button id="btn-refresh-log" class="ghost sm">刷新</button>
+            <button id="btn-clear-log" class="ghost sm">清空</button>
+          </div>
+          <pre id="logs" class="logs">暂无日志</pre>
+        </div>
+      </div>
+    </details>
+  </main>
+</div>
+<script src="shared/config.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

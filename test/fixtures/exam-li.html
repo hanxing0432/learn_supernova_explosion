@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>做作业 - 章节测验（无 input、class 选中版）</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #f4f6fa; margin: 0; padding: 18px; }
+  .newTestTitle { font-weight: 600; margin-bottom: 10px; }
+  .TiMu { background: #fff; border-radius: 8px; padding: 14px 18px; margin-bottom: 12px; }
+  .Zy_TItle { font-weight: 600; margin-bottom: 8px; }
+  .Zy_ulTop { list-style: none; margin: 0; padding: 0; }
+  .Zy_ulTop li { padding: 6px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .Zy_ulTop li:hover { background: #f1f5ff; }
+  .Zy_ulTop li.cur { background: #e0ebff; border-color: #2563eb; }
+  .check_answer { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border: 1px solid #94a3b8; border-radius: 50%; }
+  .check_answer.check_answer_cur { background: #2563eb; border-color: #2563eb; }
+  .btnSubmit { display: inline-block; margin-top: 8px; background: #2563eb; color: #fff; padding: 8px 24px; border-radius: 6px; cursor: pointer; }
+  #result { margin-top: 12px; font-weight: 600; }
+  .redo { display: inline-block; margin-left: 10px; color: #2563eb; text-decoration: underline; cursor: pointer; }
+  .layui-layer { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; }
+  .layui-layer .box { background: #fff; padding: 20px 24px; border-radius: 8px; text-align: center; }
+  .layui-layer-btn0 { display: inline-block; margin-top: 12px; background: #2563eb; color: #fff; padding: 6px 20px; border-radius: 5px; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 140px; font-size: 10px; background: #0b1220; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="newTestTitle">章节测验 待完成 1.1 题量: 3 满分: 100.0</div>
+
+<div class="TiMu newTiMu" id="q0">
+  <div class="Zy_TItle clearfix"><div class="fl"><span>1</span> 【单选题】 我国的根本政治制度是（ ）</div></div>
+  <ul class="Zy_ulTop">
+    <li class="clearfix"><i class="check_answer"></i><span class="after">A 人民代表大会制度</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">B 政治协商制度</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">C 民族区域自治制度</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">D 基层群众自治制度</span></li>
+  </ul>
+</div>
+
+<div class="TiMu newTiMu" id="q1">
+  <div class="Zy_TItle clearfix"><div class="fl"><span>2</span> 【单选题】 视频任务点必须观看满多少比例（ ）</div></div>
+  <ul class="Zy_ulTop">
+    <li class="clearfix"><i class="check_answer"></i><span class="after">A 50%</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">B 80%</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">C 90%</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">D 100%</span></li>
+  </ul>
+</div>
+
+<div class="TiMu newTiMu" id="q2">
+  <div class="Zy_TItle clearfix"><div class="fl"><span>3</span> 【多选题】 下列哪些属于学习通任务点类型（ ）</div></div>
+  <ul class="Zy_ulTop">
+    <li class="clearfix"><i class="check_answer"></i><span class="after">A 视频</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">B 文档</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">C 讨论</span></li>
+    <li class="clearfix"><i class="check_answer"></i><span class="after">D 测验</span></li>
+  </ul>
+</div>
+
+<a class="btnSubmit workBtnIndex" id="submitBtn">提交</a>
+<div id="result"></div>
+<div id="retryWrap"></div>
+
+<div class="layui-layer" id="confirmLayer">
+  <div class="box">
+    <div>确认提交吗？</div>
+    <div class="layui-layer-btn0" id="confirmOk">确定</div>
+  </div>
+</div>
+
+<pre id="test-report">{}</pre>
+<script>
+(function () {
+  const KEY = { q0: ['A'], q1: ['C'], q2: ['A', 'B', 'D'] };
+  const state = { submissions: 0, redoAttempts: 0, scores: [], passed: false, events: [] };
+
+  /* 选项点击：li 切换 cur，i 切换 check_answer_cur —— 和学习通新版一致 */
+  document.querySelectorAll('.TiMu').forEach(function (box) {
+    box.querySelectorAll('.Zy_ulTop li').forEach(function (li) {
+      li.addEventListener('click', function () {
+        const multi = /多选题/.test(box.innerText);
+        if (!multi) {
+          box.querySelectorAll('.Zy_ulTop li.cur').forEach(function (o) {
+            o.classList.remove('cur');
+            const i = o.querySelector('.check_answer');
+            if (i) i.classList.remove('check_answer_cur');
+          });
+        }
+        li.classList.toggle('cur');
+        const icon = li.querySelector('.check_answer');
+        if (icon) icon.classList.toggle('check_answer_cur');
+      });
+    });
+  });
+
+  function selected(id) {
+    const box = document.getElementById(id);
+    return Array.from(box.querySelectorAll('.Zy_ulTop li.cur')).map(function (li) {
+      const t = li.innerText.trim();
+      const m = t.match(/^([A-H])/);
+      return m ? m[1] : '';
+    }).filter(Boolean).sort();
+  }
+
+  function grade() {
+    let right = 0;
+    Object.keys(KEY).forEach(function (id) {
+      const ok = JSON.stringify(selected(id)) === JSON.stringify(KEY[id].slice().sort());
+      const box = document.getElementById(id);
+      box.classList.remove('dui', 'cuo');
+      box.classList.add(ok ? 'dui' : 'cuo');
+      if (ok) right++;
+    });
+    return Math.round((right / Object.keys(KEY).length) * 100);
+  }
+
+  document.getElementById('submitBtn').addEventListener('click', function () {
+    state.events.push('submit-clicked');
+    document.getElementById('confirmLayer').style.display = 'flex';
+  });
+
+  document.getElementById('confirmOk').addEventListener('click', function () {
+    state.events.push('confirm-clicked');
+    document.getElementById('confirmLayer').style.display = 'none';
+    state.submissions++;
+    const score = grade();
+    state.scores.push(score);
+    state.passed = score >= 60;
+    document.getElementById('result').textContent = '本次成绩：' + score + ' 分，' + (state.passed ? '已通过' : '不合格，未通过');
+    const wrap = document.getElementById('retryWrap');
+    wrap.innerHTML = state.passed ? '' : '<a class="redo" id="redoBtn">重做</a>';
+    if (!state.passed) {
+      document.getElementById('redoBtn').onclick = function () {
+        state.redoAttempts++;
+        document.querySelectorAll('.Zy_ulTop li').forEach(function (li) {
+          li.classList.remove('cur');
+          const i = li.querySelector('.check_answer');
+          if (i) i.classList.remove('check_answer_cur');
+        });
+        document.querySelectorAll('.dui,.cuo').forEach(function (b) { b.classList.remove('dui', 'cuo'); });
+        document.getElementById('result').textContent = '';
+        wrap.innerHTML = '';
+      };
+    }
+  });
+
+  window.__fixture = { state, selected };
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify({
+      submissions: state.submissions,
+      redoAttempts: state.redoAttempts,
+      scores: state.scores,
+      passed: state.passed,
+      events: state.events,
+      selections: { q0: selected('q0'), q1: selected('q1'), q2: selected('q2') }
+    });
+  }, 300);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# 依赖 / 构建产物
+node_modules/
+dist/
+build/
+
+# 本地测试与调试产物（tools/ 会生成）
+_test-build/
+_test-profile/
+_probe-profile/
+_verify-profile/
+_probe-shots/
+*.log
+
+# 打包产物
+*.zip
+*.crx
+*.pem
+*.key
+_pkg/
+_dist/
+
+# 本地 / 工作副本
+_archive/
+_research/
+_samples/
+_fonts/
+_release/
+
+# 系统与编辑器
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# 配置与密钥（别提交）
+.env
+.env.*
+*secret*
+*apikey*

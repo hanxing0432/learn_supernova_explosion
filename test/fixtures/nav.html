@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>任务点已完成（TOC 切章）</title>
+<style>
+  body { font: 14px/1.8 "Microsoft YaHei", sans-serif; background: #f7f9fc; padding: 30px; }
+  .toc { background: #fff; border-radius: 8px; padding: 10px; width: 320px; margin-bottom: 16px; }
+  .posCatalog_select { padding: 4px 6px; cursor: pointer; border-radius: 4px; }
+  .posCatalog_select:hover { background: #eef2ff; }
+  #prevNextFocusNext { background: #2563eb; color: #fff; border: 0; padding: 10px 26px; border-radius: 6px; cursor: pointer; }
+  #navstate { margin-top: 16px; color: #16a34a; font-weight: 600; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 110px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <h2>本节已学完（任务点全部完成）</h2>
+  <div class="toc">
+    <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('111','222','1','444','','','false')">1.1 当前章节</span></div>
+    <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('111','222','2','444','','','false')">1.2 下一章</span></div>
+  </div>
+  <div class="ans-job-video" aria-label="学习视频 任务点已完成"></div>
+  <div class="ans-job-work" aria-label="学习测验 任务点已完成"></div>
+  <button id="prevNextFocusNext">下一节</button>
+  <div id="navstate"></div>
+  <pre id="test-report">{}</pre>
+<script>
+(function () {
+  var state = { clicks: 0, tocClicks: 0, buttonClicks: 0, target: '' };
+  function hit(kind, label) {
+    state.clicks++;
+    if (kind === 'toc') { state.tocClicks++; state.target = label || ''; }
+    else { state.buttonClicks++; }
+    document.getElementById('navstate').textContent = '已切换 x' + state.clicks + '（' + kind + '）';
+  }
+  document.querySelectorAll('.posCatalog_name').forEach(function (sp) {
+    sp.addEventListener('click', function () { hit('toc', sp.innerText.trim()); });
+  });
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () { hit('button'); });
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify(state);
+  }, 250);
+})();
+</script>
+</body>
+</html>

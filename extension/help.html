@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>使用说明 · 学习通全自动助手</title>
+<style>
+  body { margin: 0; background: #0b1220; color: #dfe9f7; font: 14px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 30px 22px 70px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; color: #a8c8f5; }
+  p, li { color: #c6d5e8; }
+  code { background: #16233b; padding: 1px 6px; border-radius: 5px; color: #9fd0ff; font-size: 12.5px; }
+  pre { background: #0f1a2e; border: 1px solid rgba(148,163,184,.2); border-radius: 10px; padding: 12px; overflow: auto; font-size: 12.5px; }
+  .warn { background: rgba(251,191,36,.1); border-left: 3px solid #fbbf24; padding: 10px 14px; border-radius: 8px; margin: 12px 0; color: #f7e2b0; }
+  ol, ul { padding-left: 22px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 13px; }
+  th, td { border-bottom: 1px solid rgba(148,163,184,.16); padding: 7px 8px; text-align: left; vertical-align: top; }
+  th { color: #a8c8f5; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>学习通全自动助手 · 使用说明</h1>
+  <p>这是一个浏览器扩展（Manifest V3），在超星学习通 / 泛雅页面上全自动完成：视频播放、视频弹题作答、章节跳转、学习检测 AI 答题。</p>
+
+  <h2>1. 安装</h2>
+  <ol>
+    <li>浏览器地址栏打开 <code>edge://extensions</code>（Chrome 为 <code>chrome://extensions</code>）。</li>
+    <li>打开右上角「开发人员模式」。 </li>
+    <li>点「加载解压缩的扩展」，选择本扩展目录（含 <code>manifest.json</code> 的那一层）。</li>
+    <li>首次安装后点扩展图标 →「高级设置」→「AI 接口」填接口与 Key（弹窗里不再放 AI 配置，全在设置页），然后点页面顶部的「测试 AI 连接」确认可用。</li>
+  </ol>
+
+  <h2>2. 配置 AI</h2>
+  <table>
+    <tr><th>服务商</th><th>Base URL</th><th>模型示例</th></tr>
+    <tr><td>DeepSeek</td><td>https://api.deepseek.com/v1</td><td>deepseek-chat</td></tr>
+    <tr><td>OpenAI</td><td>https://api.openai.com/v1</td><td>gpt-4o-mini</td></tr>
+    <tr><td>通义千问</td><td>https://dashscope.aliyuncs.com/compatible-mode/v1</td><td>qwen-plus</td></tr>
+    <tr><td>Kimi</td><td>https://api.moonshot.cn/v1</td><td>moonshot-v1-8k</td></tr>
+    <tr><td>智谱</td><td>https://open.bigmodel.cn/api/paas/v4</td><td>glm-4-flash</td></tr>
+    <tr><td>本地 Ollama</td><td>http://127.0.0.1:11434/v1</td><td>qwen2.5:7b</td></tr>
+  </table>
+  <p>接口需兼容 OpenAI 的 <code>/chat/completions</code>。如果服务不支持 <code>response_format</code>，把「使用 JSON 模式」关掉。</p>
+  <p>「模型名」是下拉框：内置了各家的常用模型；点右边「拉取」会按你填的 Base URL 请求一次 <code>/models</code>，把该 Key 能用的模型全列出来（部分中转/自建服务不提供这个接口，会提示失败，此时选「自定义…」手填即可）。</p>
+
+  <h2>3. 工作流程</h2>
+  <ul>
+    <li><b>视频页</b>：检测到未完成任务点自动开播（音量 0，内核后台不暂停）；页面隐藏/被遮挡/被站点暂停都会自动续播。</li>
+    <li><b>视频弹题</b>：识别单选 / 多选 / 判断（按 <code>input type</code> 与题目标记双重判断），先问 AI；AI 答错换答案重问，AI 不可用时按选项组合暴力枚举。答对后自动点「继续学习」并恢复播放。</li>
+    <li><b>学完跳转</b>：视频播放结束或任务点标记完成 → 等设定延迟 → 自动点「下一节」；连续跳转有防重复点击仲裁，避免一次跳两节。</li>
+    <li><b>学习检测 / 章节测验</b>：抓取所有题目 → 批量问 AI → 按题型填答 → 提交并确认弹窗。<b>通过判定只看任务条上的「学习测验」任务点有没有变成「已完成」</b>（站点不给分数，也不看及格线）：任务点完成就直接下一节；仍是「未完成」就把错题连同上次的错误选项重新交给 AI，再提交，循环到任务点完成或达到最大轮数。</li>
+    <li><b>手动踢一次</b>：扩展图标里的「AI 学习检测」是<b>按钮</b>（不是开关）—— 停在题目页点它，就对当前页立刻跑一轮，不用等自动轮询。总开关在高级设置「学习检测 → 启用 AI 答题」。</li>
+    <li><b>答案缓存</b>：同一个题干答对后会缓存，下次遇到直接命中，省 token。</li>
+  </ul>
+
+  <h2>4. 页面浮窗</h2>
+  <p>学习页面右下角有状态卡：实时显示当前阶段（播放 / 弹题 / 测验 / 跳转）与最近日志，可暂停、改配置、清日志，拖动标题栏可换位置。</p>
+
+  <h2>5. 切到别的窗口也要继续跑（关掉浏览器睡眠标签页）</h2>
+  <p>插件自己已经用「音量 0」保活、伪造页面可见状态，<b>正常情况下切到别的窗口视频也不会暂停</b>。但浏览器还有一层策略：标签页长时间不可见时会被<b>降频 / 冻结</b>（定时器从 1 秒一次降到 1 分钟一次，久了整页冻结），表现为「切走一会儿回来发现卡在原地、章节不往下走」。</p>
+  <p>这一层<b>插件无法替你改</b>（浏览器不提供修改「睡眠标签页 / 效率模式」白名单的接口），需要手动设一次：</p>
+  <ol>
+    <li>Edge 地址栏打开 <code>edge://settings/system</code>；</li>
+    <li>关掉「<b>使用睡眠标签页节省资源</b>」（新版叫「睡眠标签页」）；</li>
+    <li>如果开着「<b>效率模式</b>」，点进去把 <code>chaoxing.com</code> 加入「从不对这些站点启用」列表。</li>
+  </ol>
+  <p>设完再刷新学习页即可。Chrome 同理：<code>chrome://settings/performance</code>。</p>
+
+  <h2>6. 设置页怎么用</h2>
+  <p>设置页顶部有搜索框，直接搜「倍速」「超时」「轮数」就能定位到那一项；下面是「常用」6 个开关，日常只用这几个。其余按主题收在可折叠的卡片里，<b>收起时标题右边会显示当前取值</b>（如「续播 开 · 音量0 开 · 倍速 1×」），点标题才展开。所有改动即时保存，不用点保存按钮。</p>
+  <p>「<b>自动学习</b>」是<b>只管播放 / 弹题 / 答题 / 跳章</b>的总开关；「防暂停」和「字体采集」不在它管辖范围内，各有自己的开关——这就是以前「总开关」让人迷惑的地方，现在文案与分组都分开了。</p>
+
+  <h2>7. 调试模式</h2>
+  <p>设置页最下面「调试」→「调试模式」，<b>默认关闭</b>。关着时下面的日志级别、字体样本采集器、改代码自动重载、本地命令桥<b>不会生成</b>，页面上翻不到；打开后才出现。这些都属于「日常用不上、排查或开发时才需要」的项。</p>
+  <p><b>本地命令桥</b>是给 <code>tools/_cmd-bridge.mjs</code> 用的：开关打开后，后台会按你填的「命令桥地址」每 1.2 秒取一次命令。地址<b>默认留空＝完全不轮询</b>，不会带任何写死的地址；要本机调试自己填 <code>http://127.0.0.1:8765</code>。</p>
+
+  <h2>8. 常见问题</h2>
+  <ul>
+    <li><b>提示「未找到提交按钮」</b>：说明页面结构与内置选择器不一致。把日志级别调成 <code>debug</code>，在扩展设置页复制日志反馈即可定位。</li>
+    <li><b>AI 返回为空 / 格式错误</b>：多为接口不支持 JSON 模式或模型太弱。关掉 JSON 模式，或换更强的模型。</li>
+    <li><b>视频不自动播放</b>：浏览器要求「有用户手势」时才允许有声播放。扩展会用 <code>volume=0</code> 的方式规避；若浏览器策略仍拦截，在页面上点一下任意位置即可。</li>
+    <li><b>章节被锁</b>（需完成之前闯关任务点）：扩展会等待解锁并按配置刷新重试。</li>
+  </ul>
+
+  <div class="warn">
+    该扩展只在本机浏览器内运行：题目内容仅发送到你自己填写的 AI 接口。请遵守所在学校与平台的课程学习规定，成绩类考核请以平台最终结果为准。
+  </div>
+</div>
+</body>
+</html>

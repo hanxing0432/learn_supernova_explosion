@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>查看已批阅作业</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #f5f7fb; padding: 20px; }
+  .TiMu { background:#fff; border-radius:8px; padding:12px 16px; margin-bottom:10px; }
+  .toc { background:#fff; border-radius:8px; padding:10px; width:320px; margin-bottom:12px; }
+  .posCatalog_select { padding: 4px 6px; cursor: pointer; border-radius: 4px; }
+  .posCatalog_select:hover { background: #eef2ff; }
+  #prevNextFocusNext { margin-top: 12px; padding: 8px 22px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 120px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style></head>
+<body>
+  <div class="newTestTitle">章节测验 已完成 1.1 题量: 3 满分: 100.0 第1次作答 本次成绩100分</div>
+  <!-- 2026-10-30：真实页面里「已完成」标记通常不在带文字的元素上，而在里层任务点图标
+       （<span class="ans-job-icon" aria-label="任务点已完成">）或外层 .ans-attach-ct 上。
+       这里按真实结构放一个，用来验证 quizTaskDone() 的新识别路径。 -->
+  <div class="ans-attach-ct" style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:6px 12px;margin:0 0 12px">
+    <span class="ans-job-icon ans-job-work" aria-label="任务点已完成" style="width:14px;height:14px;border-radius:50%;background:#22c55e;display:inline-block"></span>
+    <span>章节测验</span>
+  </div>
+  <div class="toc">
+    <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('111','222','1','444','','','false')">1.1 当前章节</span></div>
+    <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('111','222','2','444','','','false')">1.2 下一章</span></div>
+  </div>
+  <div class="TiMu newTiMu ans-cc single" id="question1">
+    <div>1 【单选题】 示例题目（ ）</div>
+    <ul class="Zy_ulTop">
+      <li class="clearfix"><i class="fl"></i>A、 选项一</li>
+      <li class="clearfix"><i class="fl"></i>B、 选项二</li>
+    </ul>
+    <div>我的答案： B  33.3分  正确答案： B</div>
+  </div>
+  <button id="prevNextFocusNext">下一节</button>
+  <pre id="test-report">{}</pre>
+<script>
+(function () {
+  const state = { clicks: 0, tocClicks: 0, buttonClicks: 0, events: [] };
+  document.querySelectorAll('.posCatalog_name').forEach(function (sp) {
+    sp.addEventListener('click', function () {
+      state.clicks++; state.tocClicks++;
+      state.events.push('toc:' + sp.innerText.trim());
+    });
+  });
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () {
+    state.clicks++; state.buttonClicks++;
+    state.events.push('next');
+  });
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify(state);
+  }, 250);
+})();
+</script>
+</body></html>

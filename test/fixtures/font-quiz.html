@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>字体还原仿真页 · font-quiz</title>
+<style>
+  body { margin: 0; padding: 18px 22px; background: #fff; color: #222;
+         font: 14px/1.7 "Microsoft YaHei", "Segoe UI", sans-serif; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  .note { color: #666; font-size: 12.5px; margin-bottom: 14px; }
+  .q { border: 1px solid #e2e2e2; border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  .Zy_TItle { font-weight: 600; margin-bottom: 6px; }
+  .answerList { list-style: none; margin: 0; padding-left: 4px; }
+  .answerList li { padding: 2px 0; }
+  #test-report { display: none; }
+</style>
+</head>
+<body>
+<h2>字体还原仿真页</h2>
+<p class="note">
+  页面里的 <code>.font-cxsecret</code> 是"看起来是汉字、实际字形被换掉"的密文（和站点一致：码位仍在 CJK 区）。
+  这里没有可用的 <code>@font-face</code>，用来验证两件事：
+  ① 字形字典 <code>data/</code> 在测试台里能加载（WAR 放宽后）；
+  ② 拿不到字体时 <code>fontdecrypt</code> 会早退，而不是硬跑一轮打印「字典 0 + 逆查 0」。
+</p>
+
+<div class="q">
+  <div class="Zy_TItle"><span>1【单选题】</span>题干：<span class="font-cxsecret">学习通字体加密</span></div>
+  <ul class="answerList">
+    <li>A. <span class="font-cxsecret">还原测试</span></li>
+    <li>B. <span class="font-cxsecret">选项文本</span></li>
+    <li>C. <span class="font-cxsecret">继续学习</span></li>
+    <li>D. <span class="font-cxsecret">任务点</span></li>
+  </ul>
+</div>
+
+<div class="q">
+  <div class="Zy_TItle"><span>2【多选题】</span>题干：<span class="font-cxsecret">章节测验题目</span></div>
+  <ul class="answerList">
+    <li>A. <span class="font-cxsecret">批量作答</span></li>
+    <li>B. <span class="font-cxsecret">错题重做</span></li>
+  </ul>
+</div>
+
+<div id="test-report">{}</div>
+</body>
+</html>

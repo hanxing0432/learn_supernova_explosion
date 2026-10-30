@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>学习通全自动助手</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="dot" id="dot"></span>
+    <div class="who">
+      <div class="t">学习通全自动助手</div>
+      <div class="s" id="statusText">未连接</div>
+      <div class="meta" id="meta"></div>
+    </div>
+  </header>
+
+  <div class="autoRow">
+    <div class="lab">
+      <div class="k">自动学习</div>
+      <div class="d">只管播放 / 弹题 / 答题 / 跳章</div>
+    </div>
+    <label class="switch" title="自动学习总开关：只管自动播放、弹题作答、AI 学习检测、自动跳章；防暂停和字体采集是独立的">
+      <input type="checkbox" id="enabled">
+      <span></span>
+    </label>
+  </div>
+
+  <div class="grp">播放与防暂停</div>
+  <section class="grid">
+    <label class="cell"><input type="checkbox" id="opt-autoplay"><span>自动播放</span></label>
+    <label class="cell" title="切到别的窗口也不暂停。若仍然会停：Edge 设置 → 系统和性能 → 关闭「使用睡眠标签页节省资源」（浏览器策略，插件改不了）"><input type="checkbox" id="opt-keepalive"><span>后台不暂停</span></label>
+  </section>
+
+  <div class="grp">自动化</div>
+  <section class="grid">
+    <label class="cell"><input type="checkbox" id="opt-videoquiz"><span>弹题自动答</span></label>
+    <label class="cell"><input type="checkbox" id="opt-next"><span>自动下一节</span></label>
+  </section>
+
+  <div class="grp">界面</div>
+  <section class="grid">
+    <label class="cell"><input type="checkbox" id="opt-hud"><span>页面浮窗</span></label>
+    <label class="cell" id="cell-samples" hidden title="字体加密样本采集器（调试项，打开「调试模式」才显示）"><input type="checkbox" id="opt-samples"><span>字体样本</span></label>
+  </section>
+
+  <button class="act" id="btn-exam-now" title="停在题目 / 测验页点一下，立刻对当前页跑一轮（总开关在「自动学习」，AI 配置在高级设置）">
+    <span class="ico">▶</span>
+    <span class="lbl">AI 学习检测</span>
+    <span class="hint2">当前页 · 立即执行</span>
+  </button>
+
+  <section class="logs-wrap">
+    <div class="logs-head">
+      <span>运行日志</span>
+      <button id="btn-clear" class="mini">清空</button>
+    </div>
+    <div id="logs" class="logs"></div>
+  </section>
+
+  <footer>
+    <button id="btn-recover" class="primary" title="重载扩展并刷新当前页面">恢复浮窗 / 重载扩展</button>
+    <span class="sp"></span>
+    <button id="btn-options" class="link">高级设置</button>
+    <a id="btn-docs" class="link" href="help.html" target="_blank">使用说明</a>
+  </footer>
+</div>
+<script src="shared/config.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

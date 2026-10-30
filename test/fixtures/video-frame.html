@@ -1,0 +1,18 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>视频帧</title>
+<style>body{margin:0;background:#000}video{width:320px;height:240px}</style></head>
+<body>
+<video id="v" muted playsinline></video>
+<script>
+  const c = document.createElement('canvas'); c.width = 320; c.height = 240;
+  const ctx = c.getContext('2d');
+  (function draw(){ ctx.fillStyle = '#' + (Math.floor(Date.now()/120) % 0xffffff).toString(16).padStart(6,'0');
+    ctx.fillRect(0,0,320,240); requestAnimationFrame(draw); })();
+  const v = document.getElementById('v');
+  v.srcObject = c.captureStream(12);
+  v.play().then(() => { window.__playing = true; }).catch(e => { window.__err = String(e); });
+  setInterval(() => { window.__time = v.currentTime; }, 200);
+  /* 6 秒后结束播放，用来验证「播放中禁止跳、播完后放行」 */
+  setTimeout(() => { v.pause(); window.__ended = true; }, 6000);
+</script>
+</body></html>

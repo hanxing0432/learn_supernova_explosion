@@ -1,0 +1,41 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>目录深度优先（先小标题）</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #f5f7fb; margin: 0; padding: 16px; }
+  .toc { width: 360px; background: #fff; border-radius: 8px; padding: 10px; }
+  .posCatalog_select { padding: 4px 6px; cursor: pointer; border-radius: 4px; }
+  .posCatalog_select:hover { background: #eef2ff; }
+  .lvl2 { padding-left: 18px; font-size: 13px; }
+  #prevNextFocusNext { margin-top: 14px; padding: 8px 22px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 120px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style></head>
+<body>
+  <div class="ans-job-video" aria-label="学习视频 任务点已完成"></div>
+  <div class="toc">
+    <div class="posCatalog_select"><span class="posCatalog_title">5.2 4.2 需求响应技术</span></div>
+    <div class="posCatalog_select lvl2 active"><span class="posCatalog_name" onclick="getTeacherAjax('265530028','157461997','1207354213','573914416')">5.2 4.2 需求响应技术</span></div>
+    <div class="posCatalog_select lvl2"><span class="posCatalog_name" onclick="getTeacherAjax('265530028','157461997','1207354214','573914416')">5.2.1 4.2.1 需求响应的概念</span></div>
+    <div class="posCatalog_select lvl2"><span class="posCatalog_name" onclick="getTeacherAjax('265530028','157461997','1207354215','573914416')">5.2.2 4.2.2 需求响应的类型</span></div>
+    <div class="posCatalog_select"><span class="posCatalog_name" onclick="getTeacherAjax('265530028','157461997','1207354216','573914416')">5.3 4.3 微电网技术</span></div>
+  </div>
+  <button id="prevNextFocusNext">下一节</button>
+  <pre id="test-report">{}</pre>
+<script>
+(function () {
+  const state = { tocClicks: 0, nextClicks: 0, target: '', targetId: '' };
+  document.querySelectorAll('.posCatalog_name').forEach(function (sp) {
+    sp.addEventListener('click', function () {
+      state.tocClicks++;
+      state.target = sp.innerText.trim();
+      var m = (sp.getAttribute('onclick') || '').match(/'(\d+)'/g) || [];
+      state.targetId = m.length >= 3 ? m[2].replace(/'/g, '') : '';
+    });
+  });
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () { state.nextClicks++; });
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify(state);
+  }, 250);
+})();
+</script>
+</body></html>

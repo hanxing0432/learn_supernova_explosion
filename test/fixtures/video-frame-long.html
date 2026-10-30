@@ -1,0 +1,18 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>视频帧（长）</title>
+<style>body{margin:0;background:#000}video{width:320px;height:240px}</style></head>
+<body>
+<video id="v" muted playsinline></video>
+<script>
+  const c = document.createElement('canvas'); c.width = 320; c.height = 240;
+  const ctx = c.getContext('2d');
+  (function draw(){ ctx.fillStyle = '#' + (Math.floor(Date.now()/120) % 0xffffff).toString(16).padStart(6,'0');
+    ctx.fillRect(0,0,320,240); requestAnimationFrame(draw); })();
+  const v = document.getElementById('v');
+  v.srcObject = c.captureStream(12);
+  v.play().catch(e => { window.__err = String(e); });
+  setInterval(() => { window.__time = v.currentTime; }, 200);
+  /* 20 秒后才结束，用来验证「任务点已完成时，视频还在播也应该跳」 */
+  setTimeout(() => { v.pause(); window.__ended = true; }, 20000);
+</script>
+</body></html>

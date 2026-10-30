@@ -1,0 +1,117 @@
+:root {
+  --bg: #0f172a;
+  --panel: #16233b;
+  --line: rgba(148, 163, 184, .22);
+  --txt: #e6edf7;
+  --muted: #93a4bd;
+  --blue: #3b82f6;
+  --green: #22c55e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; width: 372px; background: var(--bg); color: var(--txt);
+  font: 12px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.app { padding: 10px; }
+header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 9px; }
+header .dot { margin-top: 5px; flex: none; }
+.who { min-width: 0; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #64748b; }
+.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.dot.busy { background: var(--blue); box-shadow: 0 0 8px var(--blue); animation: p 1s infinite; }
+@keyframes p { 50% { opacity: .35; } }
+.t { font-weight: 600; font-size: 13px; }
+.s { color: var(--muted); font-size: 11px; max-width: 330px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { color: #6f86a6; font-size: 10.5px; margin-top: 1px; }
+
+/* 自动学习总开关：带说明的一整行，不再是一个孤零零的开关 */
+.autoRow {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 8px;
+  background: linear-gradient(90deg, rgba(37,99,235,.16), rgba(22,35,59,.9));
+  border: 1px solid rgba(96,165,250,.32); border-radius: 10px;
+}
+.autoRow .lab { flex: 1; min-width: 0; }
+.autoRow .k { font-size: 12px; font-weight: 600; color: #dbeafe; }
+.autoRow .d { font-size: 10.5px; color: #8fa3bf; margin-top: 1px; }
+
+/* 分组标题 */
+.grp { font-size: 10.5px; color: #7b8dab; letter-spacing: .4px; margin: 8px 2px 4px; }
+.grp:first-of-type { margin-top: 4px; }
+
+.switch { position: relative; width: 40px; height: 22px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; width: 100%; height: 100%; }
+.switch span {
+  position: absolute; inset: 0; background: #334155; border-radius: 22px; cursor: pointer; transition: .2s; pointer-events: none;
+}
+.switch span::after {
+  content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  top: 3px; left: 3px; transition: .2s;
+}
+.switch input:checked + span { background: var(--green); }
+.switch input:checked + span::after { transform: translateX(18px); }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 2px; }
+.cell {
+  display: flex; align-items: center; gap: 6px; padding: 7px 8px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; cursor: pointer; user-select: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+.cell:hover { border-color: rgba(96, 165, 250, .45); background: #1a2a45; }
+.cell input { accent-color: var(--green); margin: 0; }
+.cell span { font-size: 11.5px; color: #d7e2f2; }
+/* 调试项：.cell 自带 display:flex，会盖掉 [hidden] 的 UA 样式，这里显式压住 */
+.cell[hidden] { display: none !important; }
+
+/* 主动作按钮（AI 学习检测）：整行，和上面那排开关明显分层 */
+.act {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; height: 36px; margin: 6px 0 10px; padding: 0 10px;
+  font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: .2px;
+  color: #fff; background: linear-gradient(180deg, #3b82f6, #2563eb);
+  border: 1px solid rgba(96, 165, 250, .55); border-radius: 9px; cursor: pointer;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, .30);
+  transition: filter .15s ease, transform .06s ease, background .2s ease;
+}
+.act .ico { font-size: 9px; opacity: .92; }
+.act .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act .hint2 { font-size: 10px; font-weight: 400; color: rgba(255,255,255,.72); margin-left: 2px; white-space: nowrap; }
+.act:hover { filter: brightness(1.08); }
+.act:active { transform: translateY(1px); }
+.act.ok {
+  background: linear-gradient(180deg, #22c55e, #15803d); border-color: rgba(74, 222, 128, .55);
+  box-shadow: 0 6px 16px rgba(22, 163, 74, .28);
+}
+.act.bad {
+  background: linear-gradient(180deg, #f59e0b, #b45309); border-color: rgba(251, 191, 36, .5);
+  box-shadow: 0 6px 16px rgba(180, 83, 9, .25);
+}
+
+/* AI 配置块已从弹窗移除（2026-10-28：改用高级设置里的「AI 接口」区），对应样式一并删掉 */
+
+button { font-family: inherit; cursor: pointer; }
+.mini {
+  background: rgba(59, 130, 246, .18); color: #cfe1ff; border: 1px solid var(--line);
+  border-radius: 7px; padding: 5px 8px; font-size: 11px; white-space: nowrap;
+}
+.mini:hover { background: rgba(59, 130, 246, .34); }
+.primary {
+  background: var(--blue); color: #fff; border: none; border-radius: 7px; padding: 6px 14px; font-size: 11.5px;
+}
+.primary:hover { filter: brightness(1.1); }
+
+.logs-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.logs-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 6px 8px;
+  border-bottom: 1px solid var(--line); color: #c7d5ea; font-size: 11.5px;
+}
+.logs { max-height: 150px; overflow: auto; padding: 6px 8px; }
+.logs div { font-size: 11px; color: var(--muted); line-height: 1.5; word-break: break-all; }
+.logs div.warn { color: #fbbf24; }
+.logs div.error { color: #f87171; }
+.logs div.info { color: #93c5fd; }
+.logs div.debug { color: #64748b; }
+
+footer { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+footer .sp { flex: 1; }
+.link { background: none; border: none; color: #7dd3fc; font-size: 11.5px; padding: 2px; text-decoration: none; }
+.link:hover { text-decoration: underline; }

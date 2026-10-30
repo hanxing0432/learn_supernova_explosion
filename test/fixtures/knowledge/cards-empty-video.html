@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>空页外观 + 帧内视频在播</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #111; color:#ddd; }
+  iframe { width: 640px; height: 380px; border: 0; display: block; margin: 20px; background: #000; }
+  #prevNextFocusNext { margin-left: 20px; padding: 8px 22px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 110px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style></head>
+<body>
+  <iframe src="about:blank" style="width:0;height:0;border:0"></iframe>
+  <iframe id="vf" src="/video-frame-long.html"></iframe>
+  <button id="prevNextFocusNext">下一节</button>
+  <pre id="test-report">{}</pre>
+<script>
+(function () {
+  var state = { clicks: 0 };
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () { state.clicks++; });
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify(state);
+  }, 250);
+})();
+</script>
+</body></html>
