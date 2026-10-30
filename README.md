@@ -72,7 +72,7 @@
 
 ### 方式 A：下载 Release 压缩包（推荐）
 
-1. 到本仓库的 **Releases** 页面下载 `学习通全自动助手-v1.4.2.zip`，解压。
+1. 到本仓库的 **Releases** 页面下载 `chaoxing-helper-v1.4.2.zip`，解压。
 2. 浏览器地址栏打开 `edge://extensions`（Chrome：`chrome://extensions`），开启右上角「开发人员模式」。
 3. 点「加载解压缩的扩展」，选择解压出来的文件夹（有 `manifest.json` 的那一层）。
 4. 点扩展图标 →「高级设置」→「AI 接口」→ 填 Base URL / API Key / 模型名 → 「测试 AI 连接」。
