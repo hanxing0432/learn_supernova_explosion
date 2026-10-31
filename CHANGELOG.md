@@ -2,6 +2,19 @@
 
 > 版本号只在 extension/manifest.json 改一处，打包脚本与浮窗显示的版本都跟它走。
 
+## v1.4.4
+
+**修复**
+
+- **课程外壳页也挂浮窗**（`mooc2-ans/mycourse/stu` 那种只有章节目录的页面）：
+  URL 白名单里 `mycourse` / `mooc2-ans` 两个词把外壳页误判成学习页，DOM 兜底里又放了个「目录项」当特征 —— 外壳页正好有目录，于是双重命中。
+  现在：白名单只认内容页（`studentstudy` / `knowledge/cards` / `ananas/modules` / 作业与测验页），DOM 兜底也去掉了目录项，只认任务条、`video`、题目容器。
+- 外壳页因此也不再跑导航/播放/答题（共用同一判定）。
+
+**测试**
+
+- 新增 `shell` 场景（2 项）：`mycourse-shell.html` 仿真外壳页 → `studyContext=false`、无浮窗宿主。
+- 回归总数：**75 项全过**。
 ## v1.4.3
 
 **修复**

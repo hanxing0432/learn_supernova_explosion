@@ -4,7 +4,7 @@
 
 由早期一份个人用的油猴脚本重写而来，现在是完整的扩展工程 + 零依赖本地测试台。
 
-`v1.4.3` · GPL-3.0 · 73 项本地断言 · Edge / Chrome 111+
+`v1.4.4` · GPL-3.0 · 75 项本地断言 · Edge / Chrome 111+
 
 ## 目录
 
@@ -73,7 +73,7 @@
 
 ### 方式 A：下载 Release 压缩包（推荐）
 
-1. 到本仓库的 **Releases** 页面下载 `chaoxing-helper-v1.4.3.zip`，解压。
+1. 到本仓库的 **Releases** 页面下载 `chaoxing-helper-v1.4.4.zip`，解压。
 2. 浏览器地址栏打开 `edge://extensions`（Chrome：`chrome://extensions`），开启右上角「开发人员模式」。
 3. 点「加载解压缩的扩展」，选择解压出来的文件夹（有 `manifest.json` 的那一层）。
 4. 点扩展图标 →「高级设置」→「AI 接口」→ 填 Base URL / API Key / 模型名 → 「测试 AI 连接」。
@@ -273,7 +273,7 @@ node tools/run-test.mjs all
 node tools/run-test.mjs ui|hud|antipause|exam|exam-li|video-quiz|nav|quiz-entry|guard|done|review|toc|toc-child|empty|empty-optin|empty-guard|font|retry|giveup|end
 ```
 
-当前状态：`all` = **73 项断言全过**。
+当前状态：`all` = **75 项断言全过**。
 
 | 场景 | 覆盖什么 |
 |---|---|
@@ -399,7 +399,7 @@ docs/images/              README 用图
 
 ## 已知边界
 
-- **非学习页不再挂浮窗、也不跑自动化**（`v1.4.3`）：个人空间（`i.chaoxing.com`）、消息、登录页上 `CX.isStudyContext()` 为 `false`，浮窗不创建、导航/播放/答题都不启动；学习页即使换路径，也会用 DOM 特征（任务条、目录、题目容器、`video`）兜底判定。此前“个人空间里误报课程已到末尾”的现象因此不会再出现。- **通过判定只看任务点**：提交后不看分数、不看及格线，只看任务条上「学习测验」有没有变成「已完成」。
+- **非学习页不再挂浮窗、也不跑自动化**（`v1.4.4`）：个人空间、消息、登录页、**课程外壳页**（`mycourse/stu`、`mooc2-ans` 那层只有目录的页面）上 `CX.isStudyContext()` 为 `false`，浮窗不创建、导航/播放/答题都不启动。真正的内容页（`studentstudy`、`knowledge/cards`、`ananas/modules`、作业/测验页）才跑；路径不认识时用 DOM 特征（任务条、`video`、题目容器）兜底。- **通过判定只看任务点**：提交后不看分数、不看及格线，只看任务条上「学习测验」有没有变成「已完成」。
 - **防暂停必须跑在主世界**：这也是老油猴脚本 `@grant none` 能生效、而普通 content script 失效的原因。
 - **判分有延迟**：站点提交后原地重绘，旧勾叉会先留在 DOM。扩展会比对「我的答案」与本轮提交内容，对不上就继续等；超过 10 秒仍对不上则**整轮作废**（不会拿旧数据改答案）。
 - **多选只能试探**：判分只给“对/半对/错”，正确选项组合靠半对集合逐次补一个来逼近（`AC → ABC → ACD → ABCD`）；四选多选最多 3 轮。
@@ -410,7 +410,7 @@ docs/images/              README 用图
 
 ## 版本
 
-当前 `1.4.3`。改动见 [CHANGELOG.md](CHANGELOG.md)。
+当前 `1.4.4`。改动见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 

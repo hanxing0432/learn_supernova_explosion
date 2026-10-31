@@ -47,7 +47,9 @@
     let href = '';
     try { href = String(root.location.href || ''); } catch (e) {}
     if (/mooc-ans\/work\/|doHomeWorkNew|selectWorkQuestion|examtopic|exam-ans|exam\/test/i.test(href)) return 'work';
-    if (/studentstudy|knowledge\/cards|mycourse|mooc2-ans|ananas\/modules/i.test(href)) return 'study';
+    if (/studentstudy|knowledge\/cards|ananas\/modules/i.test(href)) return 'study';
+    /* 2026-10-31：mycourse / mooc2-ans 是**课程外壳页**（只有目录），不是学习页 —— 以前把它们算成 study，
+     * 于是外壳页也挂浮窗、也跑自动化。真正的内容页是 studentstudy 或 knowledge/cards 这类。 */
     if (/^https?:\/\/i\.chaoxing\.com|space|message|notice|login|passport|sso/i.test(href)) return 'space';
     return 'other';
   })();
@@ -56,7 +58,7 @@
   CX.hasStudyDom = function () {
     try {
       return !!document.querySelector(
-        '.ans-job-video, .ans-job-work, .ans-attach-ct, .posCatalog_name,' +
+        '.ans-job-video, .ans-job-work, .ans-attach-ct,' +
         ' #prevNextFocusNext, video, .TiMu, .questionLi, .font-cxsecret'
       );
     } catch (e) { return false; }
