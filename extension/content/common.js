@@ -39,6 +39,37 @@
     return d;
   })();
 
+  /* ---------------- 页面类型：学习页 / 作业页 / 其他 ----------------
+   * 2026-10-31：以前浮窗和自动化在所有 *.chaoxing.com 页面都跑，个人空间、消息、登录页也会弹浮窗，
+   * 甚至误报"课程已到末尾"。这里统一算一次页面类型，hud / nav / player / exam 都按它决定要不要干活。
+   * 判定顺序：URL 特征 → DOM 特征（站点换路径时靠 DOM 兜住）。 */
+  CX.pageKind = (function () {
+    let href = '';
+    try { href = String(root.location.href || ''); } catch (e) {}
+    if (/mooc-ans\/work\/|doHomeWorkNew|selectWorkQuestion|examtopic|exam-ans|exam\/test/i.test(href)) return 'work';
+    if (/studentstudy|knowledge\/cards|mycourse|mooc2-ans|ananas\/modules/i.test(href)) return 'study';
+    if (/^https?:\/\/i\.chaoxing\.com|space|message|notice|login|passport|sso/i.test(href)) return 'space';
+    return 'other';
+  })();
+
+  /* DOM 兜底：路径不认识，但页面上确实是学习内容 */
+  CX.hasStudyDom = function () {
+    try {
+      return !!document.querySelector(
+        '.ans-job-video, .ans-job-work, .ans-attach-ct, .posCatalog_name,' +
+        ' #prevNextFocusNext, video, .TiMu, .questionLi, .font-cxsecret'
+      );
+    } catch (e) { return false; }
+  };
+
+  /* 是否"学习上下文"：决定浮窗挂不挂、自动化跑不跑。
+   * 个人空间/消息/登录页明确返回 false；路径不认识时看 DOM。 */
+  CX.isStudyContext = function () {
+    if (CX.pageKind === 'study' || CX.pageKind === 'work') return true;
+    if (CX.pageKind === 'space') return false;
+    return CX.hasStudyDom();
+  };
+
   /* ---------------- 配置 ---------------- */
   CX.cfg = CFG.normalize(null);
   const cfgListeners = [];

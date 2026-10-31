@@ -337,9 +337,21 @@
 
   CX.onConfig(function () { render(); });
 
+  /* 2026-10-31：只在学习 / 作业页挂浮窗（个人空间、消息、登录页不挂）。
+   * 路径不认识时用 DOM 特征兜底 —— 最多等 3 次（0.5s/1s/1.5s），等任务条或 iframe 渲染出来。 */
+  let hudTries = 0;
   function mount() {
     if (!CX.cfg.ui || CX.cfg.ui.hud === false) {
       if (host) { host.remove(); host = null; shadow = null; }
+      return;
+    }
+    if (CX.isStudyContext && !CX.isStudyContext()) {
+      if (hudTries < 3) {
+        hudTries++;
+        setTimeout(mount, 500 * hudTries);
+      } else if (host) {
+        host.remove(); host = null; shadow = null;
+      }
       return;
     }
     build();
@@ -353,6 +365,10 @@
     try {
       if (!CX.cfg || !CX.cfg.ui || CX.cfg.ui.hud === false) {
         /* 配置里关掉浮窗时（设置页开关或浮窗自己的「×」），把节点也清掉 */
+        if (host) { try { host.remove(); } catch (e) {} host = null; shadow = null; }
+        return;
+      }
+      if (CX.isStudyContext && !CX.isStudyContext()) {
         if (host) { try { host.remove(); } catch (e) {} host = null; shadow = null; }
         return;
       }
@@ -379,5 +395,6 @@
     mount();
   }
   setTimeout(mount, 1200);
+  setTimeout(mount, 2600);
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);

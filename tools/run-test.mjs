@@ -1,5 +1,5 @@
 /* CDP 驱动的端到端测试：真 Edge + 真扩展 + 本地仿真页面 + Mock AI
- * 用法: node tools/run-test.mjs [all|ui|hud|antipause|exam|exam-li|video-quiz|nav|quiz-entry|guard|done|review|toc|toc-child|empty|empty-optin|empty-guard|font|retry|giveup|end]
+ * 用法: node tools/run-test.mjs [all|ui|hud|antipause|exam|exam-li|video-quiz|nav|quiz-entry|guard|done|review|toc|toc-child|empty|empty-optin|empty-guard|font|retry|giveup|end|scope]
  */
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -521,6 +521,25 @@ async function testGiveUp(swWsUrl) {
   const back = await configure(swWsUrl, { exam: { maxRounds: 3 } });
   back.cdp.close();
 }
+async function testScope() {
+  console.log('\n[用例] 非学习页（个人空间）：不挂浮窗、不跑自动化');
+  const t = await newTarget(BASE + '/space.html');
+  const cdp = new CDP(t.webSocketDebuggerUrl);
+  await cdp.opened();
+  await cdp.send('Runtime.enable');
+  await sleep(4500);   /* 覆盖 mount 的 0 / 1.2s / 2.6s 三次机会 */
+  const r = await cdp.evalIso(`({
+    hud: !!document.getElementById('__cx_hud_host'),
+    hudCount: document.querySelectorAll('#__cx_hud_host').length,
+    pageKind: (CX.pageKind || ''),
+    studyContext: CX.isStudyContext ? !!CX.isStudyContext() : null,
+    navClicks: (CX.nav && CX.nav.state) ? CX.nav.state.clicks : -1
+  })`);
+  check('识别为非学习页', !!(r && (r.pageKind === 'space' || r.pageKind === 'other') && r.studyContext === false), JSON.stringify(r));
+  check('没有浮窗宿主节点', r && r.hud === false && r.hudCount === 0, 'hud=' + (r && r.hud) + ' count=' + (r && r.hudCount));
+  check('导航没有动作', r && r.navClicks === 0, 'clicks=' + (r && r.navClicks));
+  cdp.close();
+}
 async function testRetry() {
   console.log('\n[用例] 重做试探：半对只加、判错只减、判断翻转');
   const t = await newTarget(BASE + '/nav.html?u=/mycourse/studentstudy&chapterId=1');
@@ -726,6 +745,7 @@ async function testHud() {
     if (which === 'all' || which === 'retry') await testRetry();
     if (which === 'all' || which === 'giveup') await testGiveUp(sw.webSocketDebuggerUrl);
     if (which === 'all' || which === 'end') await testCourseEnd(sw.webSocketDebuggerUrl);
+    if (which === 'all' || which === 'scope') await testScope();
 
     const logs = await dumpLogs(sw.webSocketDebuggerUrl);
     console.log('\n--- 扩展日志（最近 20 条）---');

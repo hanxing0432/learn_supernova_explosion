@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>个人空间 · 仿真（非学习页）</title>
+<style>
+  body { margin: 0; padding: 24px; background: #f5f7fa; color: #333; font: 14px/1.7 "Microsoft YaHei", sans-serif; }
+  .card { background: #fff; border-radius: 10px; padding: 16px 20px; margin: 0 0 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  h3 { margin: 0 0 8px; font-size: 16px; }
+  ul { margin: 6px 0 0; padding-left: 20px; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 320px; height: 130px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h3>hanxing 的个人空间</h3>
+  <p>这里没有任务条、没有目录、没有视频、没有题目 —— 用来验证「非学习页不挂浮窗、不跑自动化」。</p>
+</div>
+<div class="card">
+  <h3>我的课程</h3>
+  <ul><li>高校消防工作的重要性</li><li>总体国家安全观</li></ul>
+</div>
+
+<pre id="test-report">{}</pre>
+<script>
+(function () {
+  function snapshot() {
+    var hudHost = document.getElementById('__cx_hud_host');
+    var nav = window.CX && window.CX.nav;
+    return {
+      hud: !!hudHost,
+      hudCount: document.querySelectorAll('#__cx_hud_host').length,
+      pageKind: (window.CX && window.CX.pageKind) || '',
+      studyContext: (window.CX && window.CX.isStudyContext) ? !!window.CX.isStudyContext() : null,
+      navClicks: nav && nav.state ? nav.state.clicks : -1
+    };
+  }
+  setInterval(function () {
+    document.getElementById('test-report').textContent = JSON.stringify(snapshot());
+  }, 400);
+  window.__fixture = { snapshot: snapshot };
+})();
+</script>
+</body>
+</html>

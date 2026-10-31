@@ -373,7 +373,12 @@
     }, 1200);
   }
 
+  /* 2026-10-31：非学习页不跑播放逻辑（个人空间/消息页也可能有个 <video> 广告） */
+  function offStudyPage() {
+    try { return !!(CX.isStudyContext && !CX.isStudyContext()); } catch (e) { return false; }
+  }
   function scan() {
+    if (offStudyPage()) return;
     if (!CX.cfg.enabled || CX.cfg.player.autoPlay === false) return;
     /* 2026-10-28 回退：这里曾经加过"skip 模式 + 本帧看不到任务点就不自动播放"，
      * 但任务点常在**别的帧**（cards / 视频模块）里，本帧永远看不到 →
@@ -412,7 +417,7 @@
     mo.observe(doc.body, { childList: true, subtree: true });
   }
 
-  setInterval(scan, 2000);
+  setInterval(function () { if (!offStudyPage()) scan(); }, 2000);
   setInterval(function () {
     if (!CX.cfg.enabled) return;
     const v = qVideo();

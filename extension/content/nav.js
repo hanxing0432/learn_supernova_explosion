@@ -615,7 +615,12 @@
     return null;
   }
 
+  /* 2026-10-31：非学习页（个人空间/消息/登录页）不跑任何导航逻辑 */
+  function offStudyPage() {
+    try { return !!(CX.isStudyContext && !CX.isStudyContext()); } catch (e) { return false; }
+  }
   async function clickNext(reason) {
+    if (offStudyPage()) { CX.debug('非学习页（' + CX.pageKind + '），跳过跳转'); return; }
     /* 冷却自愈：等够 90 秒就无条件恢复。
      * 2026-10-28 修复：原来还要求 reason 命中 video-done/exam-passed/tasks-done，
      * 但 evaluatePage 被 st.stopped 挡住后根本不会再产生这些信号 —— 导致一旦停下就永久不动。 */
@@ -879,7 +884,7 @@
     CX.info('检测到「任务点未完成」提示，点击「去学习」');
     CX.click(go);
   }
-  setInterval(handleUnfinishedModal, 2000);
+  setInterval(function () { if (!offStudyPage()) handleUnfinishedModal(); }, 2000);
 
   /* ---------- 今日额度已满：视频任务点永远无法完成 ----------
    * 站点会常驻提示「今日视频任务点完成数已达上限…无法完成任务点」，
@@ -1430,7 +1435,7 @@
     triggerJump('task-done');
   }
 
-  setInterval(function () { try { evaluatePage(); } catch (e) { CX.debug('评估异常：' + e.message); } }, 1000);
+  setInterval(function () { try { if (!offStudyPage()) evaluatePage(); } catch (e) { CX.debug('评估异常：' + e.message); } }, 1000);
 
   CX.nav = {
     clickNext: clickNext,

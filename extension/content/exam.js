@@ -1151,6 +1151,10 @@
 
   /* ---------------- 主流程 ---------------- */
   async function run() {
+    /* 2026-10-31：非学习页不启动答题（防止个人空间/消息页误判、误提交） */
+    try {
+      if (CX.isStudyContext && !CX.isStudyContext()) { st.finished = true; return; }
+    } catch (e) {}
     if (st.busy || st.finished) return;
     /* 2026-10-28：点「重做」期间禁止重入。以前只靠 st.busy，而失败分支会提前把 st.busy
      * 放开去 await redo()（1.8s+），1.5 秒的轮询就会再开一轮 → 双份作答 / 双份提交。 */
