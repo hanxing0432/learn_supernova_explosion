@@ -33,10 +33,24 @@
     lastEntryAt: 0,
     chapterKey: '',     /* 2026-10-30：当前章节标识，用来做「切章落地期」 */
     chapterAt: 0,
-    quizDoneAnnounced: ''   /* 已经广播过「测验任务点完成」的章节 */
+    quizDoneAnnounced: '',  /* 已经广播过「测验任务点完成」的章节 */
+    /* 2026-11-03：目录智能跳章 */
+    failedToc: {},          /* 点了没切成的目录项（章节 id → 时间），下次跳过它 */
+    noTargetSince: 0,       /* 「后面只剩已完成/未解锁」的起始时间 */
+    noTargetNoted: false,
+    stopReason: '',          /* 'no-target' = 后面没得跳了才停的 */
+    tocPlan: null,           /* 最近一次目录扫描结果（调试/测试用） */
+    lastTocLogKey: '',
+    lastTocDbgAt: 0
   };
 
   function navCfg() { return CX.cfg.nav || {}; }
+
+  /* 2026-11-03：设置里开了「跳过学习检测」（exam.skipAnswering）时，
+   * 导航不再为「任务条上还有未完成的测验入口」白等，也不在测验页上卡住。 */
+  function examSkipOn() {
+    try { return !!(CX.cfg && CX.cfg.exam && CX.cfg.exam.skipAnswering === true); } catch (e) { return false; }
+  }
 
   function send(msg) {
     return new Promise(function (resolve) {
@@ -527,8 +541,126 @@
       return !!(mark && cid === mark);
     } catch (e) { return false; }
   }
+  /* ---------- 目录条目状态（2026-11-03 真机取证） ----------
+   * 真机目录行（mooc2 / studentstudy）：
+   *   已完成   <span class="icon_Completed prevTips"><span class="prevHoverTips">已完成</span></span>
+   *   没完成   <input type="hidden" class="jobUnfinishCount" value="N">
+   *            <span class="catalog_points_yi prevTips"><span class="orangeNew">N</span></span>
+   *   未解锁   <span class="catalog_points_sa prevTips">…需完成之前闯关任务点…</span>（name 没有 onclick）
+   * 口径（用户定）：黄色一律算「没完成」，圈里是 0 也照样点进去；
+   * 没有任何图标的行同样算可点候选（老版 .posCatalog_level a、目录还没渲染完）。
+   * 进去之后是空页 / 有视频 / 任务点已完成，交给 evaluatePage() 那套判断，这里不做特判。 */
+  const TOC_DONE_SEL = '.icon_Completed';
+  const TOC_TODO_SEL = '.catalog_points_yi';
+  const TOC_LOCK_SEL = '.catalog_points_sa';
+  const TOC_LOCK_RE = /需完成之前|闯关任务点|未解锁|解锁后|未开放/;
+  const TOC_DONE_RE = /已完成|已学完/;
+  const TOC_TODO_RE = /待完成|未完成|进行中/;
+
+  function tocRowOf(el) {
+    try { return (el.closest && el.closest('.posCatalog_select, .posCatalog_level, li')) || el.parentElement || el; } catch (e) { return el; }
+  }
+  /* 行 id 是 cur<knowledgeId>：未解锁项没有 onclick，id 只能从这里读 */
+  function tocRowChapterId(row) {
+    try {
+      const m = String((row && row.id) || '').match(/^cur(\d{3,})/);
+      return m ? m[1] : '';
+    } catch (e) { return ''; }
+  }
+  /* 除章节名以外的提示文字 + 标记图标背景图（class 认不出时的兜底证据） */
+  function tocMarkerHint(row, nameEl) {
+    let hint = '';
+    try {
+      const kids = row.children;
+      for (let i = 0; i < kids.length; i++) {
+        const k = kids[i];
+        if (k === nameEl || (k.classList && k.classList.contains('posCatalog_name'))) continue;
+        hint += ' ' + String(k.textContent || '') + ' ' + String((k.getAttribute && k.getAttribute('title')) || '');
+      }
+      const marks = row.querySelectorAll(TOC_DONE_SEL + ',' + TOC_TODO_SEL + ',' + TOC_LOCK_SEL);
+      for (let j = 0; j < marks.length; j++) {
+        try {
+          const bgi = String(getComputedStyle(marks[j]).backgroundImage || '');
+          if (bgi) hint += ' ' + bgi;
+        } catch (e) {}
+      }
+    } catch (e) {}
+    return CX.oneLine(hint).slice(0, 300);
+  }
+  function tocRowState(nameEl) {
+    const row = tocRowOf(nameEl);
+    if (!row) return 'unknown';
+    try {
+      if (row.querySelector(TOC_LOCK_SEL)) return 'locked';
+      if (row.querySelector(TOC_DONE_SEL)) return 'done';
+      if (row.querySelector(TOC_TODO_SEL)) return 'todo';   /* 黄色：不看数字，0 也算没完成 */
+      const unf = row.querySelector('.jobUnfinishCount');
+      if (unf && String(unf.value || '') !== '0') return 'todo';
+    } catch (e) {}
+    /* 兜底：站点换了 class 就看提示文字 / 图标背景图；再认不出就是 unknown（照点，等于旧行为） */
+    const hint = tocMarkerHint(row, nameEl);
+    if (TOC_LOCK_RE.test(hint)) return 'locked';
+    if (/chapter_wancheng/i.test(hint)) return 'done';
+    if (TOC_DONE_RE.test(hint)) return 'done';
+    if (TOC_TODO_RE.test(hint) || /chapter_icons/.test(hint)) return 'todo';
+    return 'unknown';
+  }
+  function tocKeyOf(el) {
+    try {
+      const id = tocChapterId(el) || tocRowChapterId(tocRowOf(el));
+      if (id) return id;
+      const row = tocRowOf(el);
+      return CX.oneLine((row && row.innerText) || '').replace(/^\d+(?:\.\d+)*\s*/, '').slice(0, 30);
+    } catch (e) { return ''; }
+  }
+
+  /* 定位「当前章节」在目录里的下标：章节 id → 页面文本 → 选中态（沿用原来的三段启发式） */
+  function locateTocIndex(items, d, curId) {
+    let idx = -1;
+    if (curId) {
+      const hits = [];
+      items.forEach(function (it, i) { if (it.id === curId) hits.push(i); });
+      /* 多个同名命中时，优先「行上带状态类」的那条（当前章节通常有额外 class） */
+      if (hits.length) {
+        idx = hits.find(function (i) {
+          const row = items[i].el.closest('.posCatalog_select');
+          return row && /posCatalog_(click|active|cur|current)/i.test(String(row.className || ''));
+        });
+        if (idx === undefined || idx < 0) idx = hits[0];
+      }
+    }
+    if (idx < 0) {
+      /* 2026-10-28 修复：原来这一步用的是 document.title（顶层标题是"学生学习页面"），
+       * 永远匹配不上章节名 → 目录定位失败 → 整章切不走（用户实测"可以往下走但不动"）。
+       * 改成用**页面可见文本**匹配目录条目标题。 */
+      let pageText = '';
+      try { pageText = CX.oneLine(CX.pageText(d.body)).slice(0, 800); } catch (e) { pageText = ''; }
+      if (pageText) {
+        idx = items.findIndex(function (it) {
+          const name = it.text.replace(/^\d+(?:\.\d+)*\s*/, '').trim();
+          return name.length >= 3 && pageText.indexOf(name) >= 0;
+        });
+      }
+    }
+    if (idx < 0) {
+      /* 再兜底：目录里被标成"当前"的那一条（选中态 class 或 follow 标记） */
+      idx = items.findIndex(function (it) {
+        const row = (it.el.closest && it.el.closest('.posCatalog_select, li, a')) || it.el.parentElement;
+        const cls = String((it.el.className || '') + ' ' + ((row && row.className) || ''));
+        return /posCatalog_(click|active|cur|current)|\bcur\b|\bactive\b|\bselected\b/i.test(cls);
+      });
+    }
+    return idx;
+  }
+
+  /* 目录计划：
+   *   { el, target:{text,id,state,key}, skipped:[{text,state}], hasAfter, blockedAll }
+   * 从当前项往后，跳过「已完成 / 未解锁 / 上次点了没切成」，第一个黄色或没有标记的就是目标。
+   * 注意：站点只在「已访问过」的条目上带知识点 id，未访问的 onclick 里 id 是空的，
+   * 所以绝对不能要求目标必须有 id，否则会跳过整段直接窜到很后面（曾跳到 2.1.1）。 */
   function scanToc() {
     const curId = currentChapterId();
+    const skipLocked = navCfg().skipLockedToc !== false;
     const docs = CX.walkAccessibleParents().map(function (w) {
       try { return w.document; } catch (e) { return null; }
     }).filter(Boolean);
@@ -542,51 +674,112 @@
       const items = names.map(function (el) {
         const t = CX.oneLine(el.innerText || '');
         const nm = t.match(/^(\d+(?:\.\d+)*)/);
-        return { el: el, text: t, num: nm ? nm[1] : '', id: tocChapterId(el), visible: CX.visible(el) };
+        return { el: el, text: t, num: nm ? nm[1] : '', id: tocChapterId(el) || tocRowChapterId(tocRowOf(el)) };
       });
 
-      let idx = -1;
-      if (curId) {
-        const hits = [];
-        items.forEach(function (it, i) { if (it.id === curId) hits.push(i); });
-        /* 多个同名命中时，优先「行上带状态类」的那条（当前章节通常有额外 class） */
-        if (hits.length) {
-          idx = hits.find(function (i) {
-            const row = items[i].el.closest('.posCatalog_select');
-            return row && /posCatalog_(click|active|cur|current)/i.test(String(row.className || ''));
-          });
-          if (idx === undefined || idx < 0) idx = hits[0];
-        }
-      }
-      if (idx < 0) {
-        /* 2026-10-28 修复：原来这一步用的是 document.title（顶层标题是"学生学习页面"），
-         * 永远匹配不上章节名 → 目录定位失败 → 整章切不走（用户实测"可以往下走但不动"）。
-         * 改成用**页面可见文本**匹配目录条目标题。 */
-        let pageText = '';
-        try { pageText = CX.oneLine(CX.pageText(d.body)).slice(0, 800); } catch (e) { pageText = ''; }
-        if (pageText) {
-          idx = items.findIndex(function (it) {
-            const name = it.text.replace(/^\d+(?:\.\d+)*\s*/, '').trim();
-            return name.length >= 3 && pageText.indexOf(name) >= 0;
-          });
-        }
-      }
-      if (idx < 0) {
-        /* 再兜底：目录里被标成"当前"的那一条（选中态 class 或 follow 标记） */
-        idx = items.findIndex(function (it) {
-          const row = (it.el.closest && it.el.closest('.posCatalog_select, li, a')) || it.el.parentElement;
-          const cls = String((it.el.className || '') + ' ' + ((row && row.className) || ''));
-          return /posCatalog_(click|active|cur|current)|\bcur\b|\bactive\b|\bselected\b/i.test(cls);
-        });
-      }
+      const idx = locateTocIndex(items, d, curId);
       if (idx < 0) continue;
 
-      /* 目标 = 目录里的下一条（前序 = 先小标题）。
-       * 注意：站点只在「已访问过」的条目上带知识点 id，未访问的 onclick 里 id 是空的，
-       * 所以绝对不能要求目标必须有 id，否则会跳过整段直接窜到很后面（曾跳到 2.1.1）。 */
-      if (idx + 1 < items.length) return items[idx + 1].el;
+      const after = items.slice(idx + 1);
+      if (!after.length) {
+        return { el: null, hasAfter: false, blockedAll: false, skipped: [], items: items.length, idx: idx };
+      }
+      /* 开关关掉 → 完全回到旧行为：直接取下一项 */
+      if (!skipLocked) {
+        return { el: after[0].el, target: { text: after[0].text, id: after[0].id, state: 'first', key: tocKeyOf(after[0].el) }, skipped: [], hasAfter: true, blockedAll: false, items: items.length, idx: idx };
+      }
+
+      const skipped = [];
+      for (let k = 0; k < after.length; k++) {
+        const it = after[k];
+        const key = it.id || it.text.replace(/^\d+(?:\.\d+)*\s*/, '');
+        if (st.failedToc[key]) { skipped.push({ text: it.text, state: 'failed' }); continue; }
+        const state = tocRowState(it.el);
+        if (state === 'done' || state === 'locked') { skipped.push({ text: it.text, state: state }); continue; }
+        return { el: it.el, target: { text: it.text, id: it.id, state: state, key: key }, skipped: skipped, hasAfter: true, blockedAll: false, items: items.length, idx: idx };
+      }
+      return { el: null, hasAfter: true, blockedAll: true, skipped: skipped, items: items.length, idx: idx };
     }
     return null;
+  }
+
+  /* 扫描结果缓存 900ms：evaluatePage 每秒跑一次，真机目录 240+ 行，别每次都重算 */
+  let tocPlanAt = 0;
+  let tocPlanKey = '';
+  let tocPlanVal = null;
+  function tocPlan(force) {
+    const now = Date.now();
+    const key = currentChapterId() + '|' + Object.keys(st.failedToc || {}).join(',');
+    if (!force && tocPlanVal && now - tocPlanAt < 900 && tocPlanKey === key) return tocPlanVal;
+    const plan = scanToc();
+    tocPlanAt = now;
+    tocPlanKey = key;
+    tocPlanVal = plan;
+    st.tocPlan = plan;
+    return plan;
+  }
+  function resetTocPlan() {
+    tocPlanAt = 0; tocPlanKey = ''; tocPlanVal = null;
+  }
+
+  /* 目标变了才打一条：跳过了多少项、多少是锁 / 完成 / 上次没切成 */
+  function noteTocPlan(plan) {
+    if (!plan || !plan.target) return;
+    const key = plan.target.key || plan.target.text || '';
+    if (key && st.lastTocLogKey === key) return;
+    st.lastTocLogKey = key;
+    if (!plan.skipped || !plan.skipped.length) {
+      CX.debug('目录目标：' + String(plan.target.text || '').slice(0, 24));
+      return;
+    }
+    const n = { locked: 0, done: 0, failed: 0 };
+    plan.skipped.forEach(function (s) { if (n[s.state] !== undefined) n[s.state]++; });
+    const msg = '目录：跳过 ' + plan.skipped.length + ' 项（未解锁 ' + n.locked + ' / 已完成 ' + n.done +
+      (n.failed ? ' / 上次没切成 ' + n.failed : '') + '）→ ' + String(plan.target.text || '').slice(0, 24);
+    CX.info(msg);
+    /* 真机调参用：把前几项的判定原文放进 debug，30 秒最多一条 */
+    const now = Date.now();
+    if (!st.lastTocDbgAt || now - st.lastTocDbgAt > 30000) {
+      st.lastTocDbgAt = now;
+      CX.debug('目录判定明细：' + JSON.stringify(plan.skipped.slice(0, 10).map(function (s) {
+        return String(s.text || '').slice(0, 14) + ':' + s.state;
+      })) + ' → ' + String(plan.target.text || '').slice(0, 14) + ':' + plan.target.state);
+    }
+  }
+
+  /* 后面只剩「已完成 / 未解锁」→ 确认一段时间后停手（不触发 90 秒自动恢复） */
+  function maybeStopNoTocTarget(where) {
+    const plan = st.tocPlan;
+    if (!plan || !plan.blockedAll) return false;
+    if (navCfg().stopAtCourseEnd === false) {
+      if (!st.noTargetNoted) {
+        st.noTargetNoted = true;
+        CX.warn('目录后面只剩已完成 / 未解锁的章节，但「课程末尾自动停止」关着 → 原地等待（' + where + '）');
+      }
+      return false;
+    }
+    const grace = Math.max(2000, Math.min(Number(navCfg().endConfirmMs || 12000), 15000));
+    if (!st.noTargetSince) {
+      st.noTargetSince = Date.now();
+      CX.info('目录后面只剩「已完成」/「未解锁」的章节 → 等 ' + Math.round(grace / 1000) + ' 秒确认是否停止');
+      return false;
+    }
+    if (Date.now() - st.noTargetSince < grace) return false;
+    st.stopped = true;
+    st.stoppedAt = 0;                 /* 刻意不自动恢复：用户要的是「没有就停」 */
+    st.stopReason = 'no-target';
+    CX.warn('后面没有可继续的章节（已完成或未解锁）→ 停止自动切章（' + where + '）');
+    CX.status('🎉 后面没有可做的章节了，已停止', { busy: false, phase: 'nav' });
+    return true;
+  }
+
+  /* 点了没切成 → 记下来，下次换后面的候选 */
+  function markTocFailed(el) {
+    const k = tocKeyOf(el);
+    if (!k) return;
+    st.failedToc[k] = Date.now();
+    resetTocPlan();
+    CX.info('这个目录项点不动（章节 id 没变），下次换后面的候选：' + String(k).slice(0, 24));
   }
 
   /* 目录面板默认收起时先点一下「目录」标签展开 */
@@ -605,12 +798,23 @@
   }
 
   function findNextTocEntry() {
-    let entry = scanToc();
-    if (entry) return entry;
+    let plan = tocPlan();
+    if (plan && plan.el) {
+      st.noTargetSince = 0;
+      st.noTargetNoted = false;
+      noteTocPlan(plan);
+      return plan.el;
+    }
     if (openTocPanel()) {
       /* 面板通常同步展开，直接再扫一次 */
-      entry = scanToc();
-      if (entry) return entry;
+      resetTocPlan();
+      plan = tocPlan(true);
+      if (plan && plan.el) {
+        st.noTargetSince = 0;
+        st.noTargetNoted = false;
+        noteTocPlan(plan);
+        return plan.el;
+      }
     }
     return null;
   }
@@ -713,6 +917,8 @@
       const toc = findNextTocEntry();
       const curIdBefore = currentChapterId();
       if (toc || btn) st.noNextSince = 0;   /* 又找到下一章了 → 末尾确认计时作废 */
+      /* 2026-11-03：目录后面只剩「已完成 / 未解锁」→ 确认后停止，别再拿「下一节」按钮硬试 */
+      if (!toc && maybeStopNoTocTarget('click-next')) return;
       if (toc && navCfg().useToc !== false) {
         const claim = await send({ kind: 'nav', action: 'claim', reason: 'toc', done: videoDone() });
         if (claim && claim.ok) {
@@ -751,6 +957,7 @@
           /* 目录切换失败也要计数：日志实证 14:57 那会儿每 2~4 秒重试一次、连续 10 多次，
            * 每次都在滚页面 + 调站点函数，既吵又费主线程。 */
           st.stuck++;
+          markTocFailed(toc);
           CX.warn('点目录后章节 id 没变（站点没接受这次切换，连续 ' + st.stuck + ' 次）');
           if (st.stuck >= 3) {
             st.stopped = true;
@@ -770,6 +977,8 @@
 
       /* 只走目录：找不到目录项就等下一轮，不再去点「下一节」按钮 */
       if (navCfg().tocOnly !== false) {
+        /* 2026-11-03：后面只剩已完成/未解锁时，交给 no-target 确认，别混进末尾计时 */
+        if (!btn && st.tocPlan && st.tocPlan.blockedAll) return;
         /* 目录里没有下一项：连"下一节"按钮也没有时，按末尾流程确认（12 秒宽限，避免目录还没渲染就误判） */
         if (!btn && maybeStopAtCourseEnd('toc-only')) return;
         CX.debug('目录里没找到下一章，等待下一轮（tocOnly=true）');
@@ -867,6 +1076,11 @@
         if (!CX.isTop) { CX.debug('收到「测验通过」信号（本帧不负责跳转）'); return; }
         CX.info('收到「测验通过」信号，准备跳转');
         setTimeout(function () { clickNext('exam-passed'); }, 1500);
+      } else if (msg.kind === 'exam_skipped_bc') {
+        /* 2026-11-03：设置里开了「跳过学习检测」→ 进测验页后立刻离开 */
+        if (!CX.isTop) { CX.debug('收到「跳过学习检测」信号（本帧不负责跳转）'); return; }
+        CX.info('收到「跳过学习检测」信号，准备切下一章');
+        setTimeout(function () { clickNext('exam-skipped'); }, 1500);
       }
     });
   } catch (e) {}
@@ -1068,8 +1282,8 @@
    * 而同一个帧的 st.quizTaskClicked 已经把这个 href 记住了 → 下一轮就不会再点、直接切章。
    * 实测就是"点了学习测验，同一秒又把章节切走了"。最多等 30 秒，防止入口本身点不动时卡死。 */
   function holdForPendingQuiz(where) {
-    /* 本节测验已经放弃 → 那个入口永远是"未完成"，别再白等 12 秒（这就是 03:46:27 那条日志的来历） */
-    if (examGaveUpHere()) { pendingQuizSince = 0; return false; }
+    /* 本节测验已经放弃 / 按设置跳过 → 那个入口永远是"未完成"，别再白等 12 秒（这就是 03:46:27 那条日志的来历） */
+    if (examGaveUpHere() || examSkipOn()) { pendingQuizSince = 0; return false; }
     if (!pendingQuizAnywhere()) { pendingQuizSince = 0; return false; }
     if (!pendingQuizSince) {
       pendingQuizSince = Date.now();
@@ -1247,6 +1461,11 @@
     } catch (e) {}
     const toc = findNextTocEntry();
     if (!toc) {
+      /* 2026-11-03：后面只剩已完成 / 未解锁 → 确认后停止（优先于「课程末尾」判定，
+       * 否则会先打一条「课程已到末尾」，语义不对） */
+      if (maybeStopNoTocTarget('trigger-jump')) return;
+      /* 正在 no-target 确认期：别再去跑末尾计时，否则日志会冒出「没有下一节按钮」的假话 */
+      if (st.tocPlan && st.tocPlan.blockedAll) return;
       /* 2026-10-31：真机到末尾走的就是这条路（triggerJump 找不到目录项）。
        * 先问一次"是不是课程已经结束"，别只会每 10 秒刷一条 warn。 */
       if (maybeStopAtCourseEnd('trigger-jump', 15000)) return;
@@ -1260,6 +1479,8 @@
       return;
     }
     st.noNextSince = 0;   /* 又找到目录项了 → 末尾计时作废 */
+    st.noTargetSince = 0;
+    st.noTargetNoted = false;
     lastJumpAt = now;
     CX.info('（' + reason + '）点目录切章：' + CX.oneLine(toc.innerText).slice(0, 24));
     clickNext(reason);
@@ -1305,6 +1526,13 @@
       tpTextAt = 0;
       tpTextVal = false;
       st.lastAdvanceWhy = '';
+      /* 2026-11-03：换章后上一章的「点不动」记录、以及「后面没得跳」的计时都作废 */
+      st.failedToc = {};
+      st.noTargetSince = 0;
+      st.noTargetNoted = false;
+      st.stopReason = '';
+      st.lastTocLogKey = '';
+      resetTocPlan();
       /* 换章了：上一章答题帧留下的「忙碌」标记必须清掉，否则新章节要被它挡住十几秒
        * （实测第二个测验白等 26 秒才去点入口）。 */
       try { root.top.__cxExamBusyAt = 0; } catch (e) {}
@@ -1319,7 +1547,15 @@
     if (examBusyRecently()) return;
 
     if (hasQuizOpen()) return;
-    if (CX.parser && CX.parser.looksLikeExamPage && CX.parser.looksLikeExamPage()) return;
+    /* 2026-11-03：跳过学习检测时，如果测验就在本帧（同一文档，而不是子 iframe），
+     * exam 的广播可能早于本帧监听就绪 → 停留 6 秒后自己发起切章，别卡在测验页上。 */
+    if (CX.parser && CX.parser.looksLikeExamPage && CX.parser.looksLikeExamPage()) {
+      if (examSkipOn()) {
+        const dwell = Date.now() - (st.chapterAt || st.loadedAt || 0);
+        if (dwell > 6000) triggerJump('skip-exam');
+      }
+      return;
+    }
 
     const type = detectPageType();
     st.pageType = type;
@@ -1442,7 +1678,22 @@
     findNextButton: findNextButton,
     hasUnfinishedTask: hasUnfinishedTask,
     allTasksDone: allTasksDone,
-    state: st
+    state: st,
+    /* 2026-11-03：目录扫描结果的纯数据摘要（测试 / 诊断用，不暴露 DOM） */
+    tocScan: function () {
+      let p = null;
+      try { p = tocPlan(); } catch (e) { return null; }
+      if (!p) return null;
+      return {
+        target: p.target || null,
+        skipped: p.skipped || [],
+        blockedAll: !!p.blockedAll,
+        hasAfter: !!p.hasAfter,
+        count: p.items || 0,
+        idx: p.idx == null ? -1 : p.idx
+      };
+    },
+    resetTocPlan: resetTocPlan
   };
 
   /* 用户点「启动」（总开关 false → true）时清掉暂停状态，否则 stopped/stuck 会一直挡住跳转 */
@@ -1451,11 +1702,18 @@
     const on = !!(cfg && cfg.enabled);
     if (on && !lastEnabled) {
       st.stopped = false;
+      st.stoppedAt = 0;
+      st.stopReason = '';
       st.stuck = 0;
       st.busy = false;
       st.claimRetries = 0;
       st.typeSince = 0;
       st.quizTaskClicked = '';
+      st.failedToc = {};
+      st.noTargetSince = 0;
+      st.noTargetNoted = false;
+      st.lastTocLogKey = '';
+      resetTocPlan();
       CX.debug('已重新启用：清除暂停状态，恢复自动切章');
     }
     lastEnabled = on;

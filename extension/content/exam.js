@@ -17,6 +17,7 @@
     questions: [],
     started: false,
     finished: false,
+    skipped: false,     /* 2026-11-03：按设置跳过学习检测（进页面但没作答） */
     bruteNoted: false,
     lastSubmitAt: 0,
     lastSubmitAddDelta: 0
@@ -34,6 +35,23 @@
   } catch (e) {}
 
   function cfg() { return CX.cfg.exam || {}; }
+
+  /* ================= 跳过学习检测（2026-11-03） =================
+   * 用户要的语义是「仍然进测验页，但不作答」：导航照旧点任务条上的测验入口，
+   * 进来之后这里不解析题目、不调 AI、不提交、也不点「开始答题」，
+   * 只广播一次「跳过」，由导航切下一章。
+   * 目的就是尽快离开这一页，所以别在这儿等任何判分/任务点标记。 */
+  function skipAnswering() { return cfg().skipAnswering === true; }
+
+  function skipNow() {
+    const first = !st.skipped;
+    st.skipped = true;
+    st.finished = true;
+    if (!first) return;
+    CX.info('按设置跳过学习检测：进页面但不作答，交给导航切下一章');
+    CX.status('跳过学习检测（按设置不作答）', { busy: false, phase: 'exam' });
+    try { chrome.runtime.sendMessage({ kind: 'exam:skipped', url: location.href }); } catch (e) {}
+  }
 
   /* ================= 通过判定：只看「学习测验」任务点是否完成 =================
    * 站点不给分数（「本次成绩」只是弹窗文案，已批阅页也只写「未达到及格线，请重做」），
@@ -1160,6 +1178,8 @@
      * 放开去 await redo()（1.8s+），1.5 秒的轮询就会再开一轮 → 双份作答 / 双份提交。 */
     if (st.redoing) return;
     if (!isExamContext()) return;
+    /* 2026-11-03：设置里开了「跳过学习检测」→ 一题都不答，直接广播跳过 */
+    if (skipAnswering()) { skipNow(); return; }
 
     const key = examId();
     if (st.examId !== key) {
@@ -1562,6 +1582,12 @@
     try { if (st.busy || st.redoing) root.top.__cxExamBusyAt = Date.now(); } catch (e) {}
     if (!CX.cfg.enabled || cfg().enabled === false) return;
     if (st.finished) return;
+    /* 2026-11-03：跳过模式下不点「开始答题」、不判分、不作答；
+     * 只确认「当前确实是测验页」，然后广播给导航切下一章。 */
+    if (skipAnswering()) {
+      if (P.looksLikeExamPage()) skipNow();
+      return;
+    }
     /* 已批阅页：只判定 + 通知导航，不再答题 */
     if (handleReviewPage()) { stableTicks = 0; return; }
     if (!P.looksLikeExamPage()) {
@@ -1588,8 +1614,20 @@
   /* 用户点「启动」（总开关 false → true）时清掉"已结束"标记，否则 st.finished 一旦置位，
    * 轮询会永远 return，表现就是"点了启动没反应"。 */
   let lastEnabledForReset = !!(CX.cfg && CX.cfg.enabled);
-  CX.onConfig(function (cfg) {
-    const on = !!(cfg && cfg.enabled);
+  let lastSkipForReset = !!(CX.cfg && CX.cfg.exam && CX.cfg.exam.skipAnswering);
+  CX.onConfig(function (cfgNow) {
+    /* 2026-11-03：切换「跳过学习检测」时清掉本页的结束标记，
+     * 否则关掉开关后 st.finished/skipped 一直挡着，本页永远不会再作答。 */
+    const skipNowOn = !!(cfgNow && cfgNow.exam && cfgNow.exam.skipAnswering);
+    if (skipNowOn !== lastSkipForReset) {
+      lastSkipForReset = skipNowOn;
+      st.finished = false;
+      st.skipped = false;
+      st.busy = false;
+      st.redoing = false;
+      CX.info(skipNowOn ? '已打开「跳过学习检测」：本页不再作答' : '已关闭「跳过学习检测」：恢复自动作答');
+    }
+    const on = !!(cfgNow && cfgNow.enabled);
     if (on && !lastEnabledForReset && st.finished) {
       st.finished = false;
       st.busy = false;

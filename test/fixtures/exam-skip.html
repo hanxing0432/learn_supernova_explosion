@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>章节测验 - 跳过检测（仿真）</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #f4f6fa; margin: 0; padding: 20px; }
+  .toc { max-width: 860px; margin: 0 auto 14px; background: #fff; border-radius: 8px; padding: 10px; }
+  .posCatalog_select { padding: 4px 6px; border-radius: 4px; }
+  .posCatalog_select:hover { background: #eef2ff; }
+  .posCatalog_select.active { background: #e0ebff; }
+  #prevNextFocusNext { margin: 0 auto 14px; display: block; padding: 8px 22px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  #toc-report { position: fixed; right: 8px; bottom: 172px; width: 300px; font-size: 10px; background: #0b1220; color: #9fb6d4; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+  .paper { max-width: 860px; margin: 0 auto; background: #fff; padding: 20px 26px; border-radius: 10px; }
+  .questionLi, .TiMu { padding: 12px 0; border-bottom: 1px dashed #e2e8f0; }
+  .Zy_TItle { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+  .Zy_TItle .fl { color: #2563eb; margin-right: 4px; }
+  .Zy_ulTop, .answerList { list-style: none; margin: 0; padding: 0 0 0 8px; }
+  .Zy_ulTop li, .answerList li { padding: 4px 0; }
+  label { cursor: pointer; }
+  .cuo { background: #fff1f2; }
+  .dui { background: #f0fdf4; }
+  .completeBtn { display: inline-block; margin-top: 16px; background: #2563eb; color: #fff; padding: 8px 26px; border-radius: 6px; cursor: pointer; }
+  #result { margin-top: 14px; font-weight: 600; }
+  .redo { display: inline-block; margin-top: 10px; margin-left: 10px; color: #2563eb; cursor: pointer; text-decoration: underline; }
+  .layui-layer { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; }
+  .layui-layer .box { background: #fff; padding: 20px 24px; border-radius: 8px; min-width: 260px; text-align: center; }
+  .layui-layer-btn0 { display: inline-block; background: #2563eb; color: #fff; padding: 6px 20px; border-radius: 5px; margin-top: 12px; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 300px; height: 150px; font-size: 10px; background: #0b1220; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="toc">
+  <div class="posCatalog_select active" id="cur1207354213">
+    <span class="posCatalog_name" onclick="getTeacherAjax('266214610','157743790','1207354213','573914416')">2.8.1.4 本章学习测验</span>
+  </div>
+  <div class="posCatalog_select" id="cur1207354214">
+    <span class="posCatalog_name" onclick="getTeacherAjax('266214610','157743790','1207354214','573914416')">2.8.2 下一章</span>
+  </div>
+</div>
+<button id="prevNextFocusNext">下一节</button>
+<pre id="toc-report">{}</pre>
+<div class="paper" id="paper">
+  <h2 style="margin-top:0">2.8.1.4 学习测验</h2>
+
+  <div class="questionLi" id="q0">
+    <h3 class="Zy_TItle"><span class="fl">1【单选题】</span><div class="clearfix">我国的根本政治制度是（ ）</div></h3>
+    <ul class="Zy_ulTop">
+      <li><label><input type="radio" name="ans0" value="A"><i>A、</i>人民代表大会制度</label></li>
+      <li><label><input type="radio" name="ans0" value="B"><i>B、</i>中国共产党领导的多党合作和政治协商制度</label></li>
+      <li><label><input type="radio" name="ans0" value="C"><i>C、</i>民族区域自治制度</label></li>
+      <li><label><input type="radio" name="ans0" value="D"><i>D、</i>基层群众自治制度</label></li>
+    </ul>
+  </div>
+
+  <div class="questionLi" id="q1">
+    <h3 class="Zy_TItle"><span class="fl">2【多选题】</span><div class="clearfix">下列哪些属于学习通任务点类型（ ）</div></h3>
+    <ul class="Zy_ulTop">
+      <li><label><input type="checkbox" name="ans1" value="A"><i>A、</i>视频</label></li>
+      <li><label><input type="checkbox" name="ans1" value="B"><i>B、</i>文档</label></li>
+      <li><label><input type="checkbox" name="ans1" value="C"><i>C、</i>讨论</label></li>
+      <li><label><input type="checkbox" name="ans1" value="D"><i>D、</i>测验</label></li>
+    </ul>
+  </div>
+
+  <div class="questionLi" id="q2">
+    <h3 class="Zy_TItle"><span class="fl">3【单选题】</span><div class="clearfix">视频任务点必须观看满多少比例（ ）</div></h3>
+    <ul class="Zy_ulTop">
+      <li><label><input type="radio" name="ans2" value="A"><i>A、</i>50%</label></li>
+      <li><label><input type="radio" name="ans2" value="B"><i>B、</i>80%</label></li>
+      <li><label><input type="radio" name="ans2" value="C"><i>C、</i>90%</label></li>
+      <li><label><input type="radio" name="ans2" value="D"><i>D、</i>100%</label></li>
+    </ul>
+  </div>
+
+  <div class="questionLi" id="q3">
+    <h3 class="Zy_TItle"><span class="fl">4【判断题】</span><div class="clearfix">超星学习通属于在线教育平台（ ）</div></h3>
+    <ul class="Zy_ulTop">
+      <li><label><input type="radio" name="ans3" value="A"><i>A、</i>正确</label></li>
+      <li><label><input type="radio" name="ans3" value="B"><i>B、</i>错误</label></li>
+    </ul>
+  </div>
+
+  <div class="questionLi" id="q4">
+    <h3 class="Zy_TItle"><span class="fl">5【多选题】</span><div class="clearfix">下列哪些行为会导致视频任务点暂停（ ）</div></h3>
+    <ul class="Zy_ulTop">
+      <li><label><input type="checkbox" name="ans4" value="A"><i>A、</i>切换标签页</label></li>
+      <li><label><input type="checkbox" name="ans4" value="B"><i>B、</i>调节音量</label></li>
+      <li><label><input type="checkbox" name="ans4" value="C"><i>C、</i>最小化窗口</label></li>
+      <li><label><input type="checkbox" name="ans4" value="D"><i>D、</i>全屏观看</label></li>
+    </ul>
+  </div>
+
+  <!-- 第二种页面结构：TiMu / answerList -->
+  <div class="TiMu" id="q5">
+    <div class="stem">6【单选题】学习检测未通过时可以重做（ ）</div>
+    <ul class="answerList">
+      <li><input type="radio" name="ans5" value="A"><span class="after">A、正确</span></li>
+      <li><input type="radio" name="ans5" value="B"><span class="after">B、错误</span></li>
+    </ul>
+  </div>
+
+  <a class="completeBtn" id="submitBtn">提交</a>
+  <div id="result"></div>
+  <div id="retryWrap"></div>
+</div>
+
+<div class="layui-layer" id="confirmLayer">
+  <div class="box">
+    <div>确认提交吗？提交后不可修改</div>
+    <div class="layui-layer-btn0" id="confirmOk">确定</div>
+  </div>
+</div>
+
+<pre id="test-report">{}</pre>
+
+<script>
+(function () {
+  const KEY = { q0: ['A'], q1: ['A', 'B', 'D'], q2: ['C'], q3: ['A'], q4: ['A', 'C'], q5: ['A'] };
+  const state = { submissions: 0, attempts: 0, scores: [], passed: false, events: [] };
+  const log = (e) => { state.events.push(e); };
+
+  function selected(id) {
+    return Array.from(document.querySelectorAll('#' + id + ' input'))
+      .filter((i) => i.checked).map((i) => i.value).sort();
+  }
+
+  function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+  function grade() {
+    let right = 0;
+    const total = Object.keys(KEY).length;
+    Object.keys(KEY).forEach((id) => {
+      const ok = same(selected(id), KEY[id].slice().sort());
+      const box = document.getElementById(id);
+      box.classList.remove('dui', 'cuo');
+      box.classList.add(ok ? 'dui' : 'cuo');
+      if (ok) right++;
+    });
+    return Math.round((right / total) * 100);
+  }
+
+  function showResult(score) {
+    const pass = score >= 60;
+    state.passed = pass;
+    state.scores.push(score);
+    document.getElementById('result').textContent = '本次成绩：' + score + ' 分，' + (pass ? '已通过' : '不合格，未通过');
+    const wrap = document.getElementById('retryWrap');
+    wrap.innerHTML = pass ? '' : '<a class="redo" id="redoBtn">重做</a>';
+    if (!pass) {
+      document.getElementById('redoBtn').onclick = () => {
+        log('redo-clicked');
+        state.attempts++;
+        document.querySelectorAll('#paper input').forEach((i) => { i.checked = false; });
+        document.querySelectorAll('.dui,.cuo').forEach((b) => b.classList.remove('dui', 'cuo'));
+        document.getElementById('result').textContent = '';
+        wrap.innerHTML = '';
+      };
+    }
+  }
+
+  document.getElementById('submitBtn').addEventListener('click', () => {
+    log('submit-clicked');
+    document.getElementById('confirmLayer').style.display = 'flex';
+  });
+
+  document.getElementById('confirmOk').addEventListener('click', () => {
+    log('confirm-clicked');
+    document.getElementById('confirmLayer').style.display = 'none';
+    state.submissions++;
+    showResult(grade());
+  });
+
+  /* 让「重做」按钮出现在提交后的页面里 */
+  window.__fixture = { state, KEY, selected };
+
+  setInterval(() => {
+    document.getElementById('test-report').textContent = JSON.stringify({
+      submissions: state.submissions,
+      redoAttempts: state.attempts,
+      scores: state.scores,
+      passed: state.passed,
+      events: state.events,
+      selections: Object.keys(KEY).reduce((acc, id) => { acc[id] = selected(id); return acc; }, {})
+    });
+  }, 400);
+})();
+</script>
+<script>
+(function () {
+  const st = { tocClicks: 0, buttonClicks: 0, target: '', targetId: '' };
+  window.__toc = st;
+  function paint() { document.getElementById('toc-report').textContent = JSON.stringify(st); }
+  function hit(label, id) {
+    st.tocClicks++;
+    st.target = label || '';
+    st.targetId = id || '';
+    paint();
+  }
+  /* 真实站点走内联 onclick 里的 getTeacherAjax；页面 CSP 下合成点击无效，
+   * 扩展会通过主世界直接调这个函数 —— 所以主计数放在这里。 */
+  window.getTeacherAjax = function (a, b, id) {
+    var key = "'" + id + "'";
+    var label = '';
+    document.querySelectorAll('.posCatalog_name').forEach(function (el) {
+      if (!label && String(el.getAttribute('onclick') || '').indexOf(key) >= 0) label = el.innerText.trim();
+    });
+    hit(label, id);
+    return '';
+  };
+  /* 主世界调用失败时扩展会退回合成点击，这里也记一笔（正常不会同时触发） */
+  document.querySelectorAll('.posCatalog_name').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var m = (el.getAttribute('onclick') || '').match(/'(\d+)'/g) || [];
+      hit(el.innerText.trim(), m.length >= 3 ? m[2].replace(/'/g, '') : '');
+    });
+  });
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () { st.buttonClicks++; paint(); });
+  paint();
+})();
+</script>
+</body>
+</html>

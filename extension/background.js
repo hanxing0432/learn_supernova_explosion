@@ -419,6 +419,13 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return;
   }
 
+  /* 2026-11-03：设置里开了「跳过学习检测」时，答题帧一进测验页就发这条，
+   * 导航据此直接切下一章（与「通过」同一条出路，但日志语义分开）。 */
+  if (msg.kind === 'exam:skipped') {
+    broadcast(tabId, { kind: 'exam_skipped_bc', url: msg.url });
+    return;
+  }
+
   /* 2026-10-30：顶层能看到任务条、答题帧经常看不到（跨域 iframe）。
    * 由顶层判定「学习测验任务点已完成」后广播给同标签页所有帧。 */
   if (msg.kind === 'quiz:taskDone') {
@@ -547,6 +554,36 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     }
     lastClaim[key] = now;
     sendResponse({ ok: true });
+    return true;
+  }
+
+  /* 2026-11-03：题目原文面板 —— 跨帧采集 / 跳转定位 / 打开搜索页 */
+  if (msg.kind === 'qtext') {
+    if (msg.action === 'collect') {
+      broadcast(tabId, { kind: 'qtext_collect_bc', reqId: msg.reqId });
+      return;
+    }
+    if (msg.action === 'part') {
+      broadcast(tabId, { kind: 'qtext_part_bc', reqId: msg.reqId, part: msg.part, frameId: (sender && sender.frameId) || 0 });
+      return;
+    }
+    if (msg.action === 'focus') {
+      /* 广播给所有帧，只有 key 对得上的那一帧会滚 —— 不用维护 frameId 映射 */
+      broadcast(tabId, { kind: 'qtext_focus_bc', key: msg.key, idx: msg.idx });
+      return;
+    }
+    if (msg.action === 'clear') {
+      /* 关面板 / 重抓时把各帧的描边都清掉 */
+      broadcast(tabId, { kind: 'qtext_clear_bc' });
+      return;
+    }
+    return;
+  }
+
+  if (msg.kind === 'openUrl') {
+    const u = String((msg && msg.url) || '');
+    if (!/^https?:\/\//i.test(u) || u.length > 2048) { sendResponse({ ok: false, error: 'bad url' }); return true; }
+    chrome.tabs.create({ url: u }, function (t) { sendResponse({ ok: !!t, id: (t && t.id) || null }); });
     return true;
   }
 

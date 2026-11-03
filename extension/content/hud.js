@@ -99,6 +99,7 @@
           <div class="status"><span class="txt" id="statusText">待启动</span></div>
           <div class="row">
             <button data-act="options">高级设置</button>
+            <button data-act="qtext" id="btnQText" title="把当前题目还原成明文：可复制、跳转、搜索">题目原文</button>
             <button data-act="diag">诊断</button>
             <button data-act="reloadExt">重载扩展</button>
             <button data-act="reload">重载配置</button>
@@ -178,6 +179,11 @@
       collapsed = !collapsed;
       shadow.getElementById('wrap').classList.toggle('collapsed', collapsed);
       btn.textContent = collapsed ? '＋' : '－';
+    } else if (act === 'qtext') {
+      try {
+        if (CX.qtext && CX.qtext.toggle) CX.qtext.toggle();
+        else CX.warn('题目原文模块未加载，刷新页面再试');
+      } catch (err) { CX.warn('题目原文打开失败：' + ((err && err.message) || err)); }
     } else if (act === 'toggle') {
       const next = !CX.cfg.enabled;
       applyEnabled(next);
@@ -283,6 +289,9 @@
     btnToggle.title = CX.cfg.enabled ? '点击暂停全部自动化' : '点击启动自动化';
     btnToggle.style.background = CX.cfg.enabled ? 'rgba(34,197,94,.30)' : 'rgba(239,68,68,.40)';
     btnToggle.style.border = '1px solid ' + (CX.cfg.enabled ? 'rgba(74,222,128,.5)' : 'rgba(248,113,113,.5)');
+    /* 2026-11-03：「题目原文」按钮跟设置里的开关联动（设置页改完立即生效） */
+    const btnQ = shadow.getElementById('btnQText');
+    if (btnQ) btnQ.style.display = (CX.cfg.ui && CX.cfg.ui.questionCopy === false) ? 'none' : '';
     shadow.getElementById('statusText').textContent = state.text;
     const box = shadow.getElementById('logs');
     const tail = logLines.slice(-LOG_MAX).reverse();

@@ -1,5 +1,5 @@
 /* CDP 驱动的端到端测试：真 Edge + 真扩展 + 本地仿真页面 + Mock AI
- * 用法: node tools/run-test.mjs [all|ui|hud|antipause|exam|exam-li|video-quiz|nav|quiz-entry|guard|done|review|toc|toc-child|empty|empty-optin|empty-guard|font|retry|giveup|end|scope|shell]
+ * 用法: node tools/run-test.mjs [all|ui|hud|antipause|exam|exam-li|video-quiz|nav|quiz-entry|guard|done|review|toc|toc-child|toc-locked|toc-done|toc-yellow0|toc-none|skip-exam|empty|empty-optin|empty-guard|font|retry|giveup|end|scope|shell]
  */
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -193,6 +193,20 @@ async function testUI(extId) {
     check(page + ' 正常渲染', parsed.body > 50 && parsed.title.length > 0, JSON.stringify(parsed));
     check(page + ' 无 JS 异常', errs.length === 0, errs.join('; ').slice(0, 160));
     if (page === 'options.html') check('设置页字段齐全', parsed.fields >= 25, 'fields=' + parsed.fields);
+    if (page === 'options.html') {
+      /* 2026-11-03：初次安装（空存储）时「调试」卡里的开关必须全是关的；其它默认值不动 */
+      const d = JSON.parse(await cdp.eval(`JSON.stringify({
+        samples: CXConfig.DEFAULTS.samples.enabled,
+        autoReload: CXConfig.DEFAULTS.dev.autoReload,
+        cmdBridge: CXConfig.DEFAULTS.dev.cmdBridge,
+        skipExam: CXConfig.DEFAULTS.exam.skipAnswering,
+        ver: CXConfig.DEFAULTS.version,
+        logLevel: CXConfig.DEFAULTS.ui.logLevel
+      })`) || '{}');
+      check('调试卡开关默认全关（初次安装）', d.samples === false && d.autoReload === false && d.cmdBridge === false, JSON.stringify(d));
+      check('「跳过学习检测」默认关', d.skipExam === false, 'skipAnswering=' + d.skipExam);
+      check('配置版本 4、日志级别仍 info', d.ver === 4 && d.logLevel === 'info', 'v=' + d.ver + ' lv=' + d.logLevel);
+    }
     cdp.close();
   }
 }
@@ -462,6 +476,23 @@ async function testFont() {
   })()`);
   check('页面文本保持原样（无字体时不误改）', !!(pua && pua.stillCipher === true), JSON.stringify(pua));
   check('没有产生映射条目', !!(fd && fd.mapped === 0), 'mapped=' + (fd && fd.mapped));
+
+  /* ④ 2026-11-03：调试卡开关默认关 —— 空/旧配置下采集器应当是关的
+   *（以前 fontsampler 用 `enabled !== false` 判断，缺键时会当成开） */
+  let sampler = null;
+  try {
+    sampler = await cdp.evalIso('(CX.samples && CX.samples.state) ? { enabled: !!CX.samples.state().enabled } : null');
+  } catch (e) { sampler = { err: String(e && e.message) }; }
+  check('字体样本采集器默认关', !!(sampler && sampler.enabled === false), JSON.stringify(sampler));
+
+  /* 2026-11-03：采集器面板越界自愈（跟常态浮窗一致；这里直接改它的位置状态验证） */
+  try {
+    await cdp.evalIso('(function () { var s = CX.samples.state(); s.pos = { left: 99999, top: 99999 }; return true; })()');
+  } catch (e) {}
+  await sleep(3600);
+  let posFix = null;
+  try { posFix = await cdp.evalIso('(function () { var s = CX.samples.state(); return { pos: s.pos, corner: s.corner }; })()'); } catch (e) { posFix = { err: String(e && e.message) }; }
+  check('采集器位置越界后自动复位', !!(posFix && posFix.pos === null), JSON.stringify(posFix));
   cdp.close();
 }
 
@@ -646,6 +677,82 @@ async function testEmptyButPlaying(swWsUrl) {
   cdp.close();
 }
 
+/* 2026-11-03：目录标记智能跳章 —— 仿真页按真机 HTML 造
+ * （.icon_Completed / .catalog_points_yi + .orangeNew / .catalog_points_sa，locked 行 name 不带 onclick） */
+async function tocPickRun(swWsUrl, o) {
+  console.log('\n[用例] ' + o.title);
+  await configure(swWsUrl, {
+    player: { autoPlay: false },
+    nav: {
+      skipEmptyPage: true, nextDelayMs: 300, maxStuckReloads: 1,
+      useToc: true, tocOnly: true, skipLockedToc: true,
+      endConfirmMs: o.endConfirmMs || 12000
+    }
+  });
+  const t = await newTarget(BASE + '/knowledge/' + o.fixture + '?chapterId=' + (o.chapterId || '1207354213'));
+  const cdp = new CDP(t.webSocketDebuggerUrl);
+  await cdp.opened();
+  await cdp.send('Runtime.enable');
+  let report = null;
+  const t0 = Date.now();
+  while (Date.now() - t0 < 45000) {
+    await sleep(600);
+    try { report = JSON.parse(await cdp.eval('document.getElementById("test-report").textContent') || '{}'); } catch (e) { continue; }
+    if (o.expectStop) {
+      let stopped = false;
+      try { stopped = await cdp.evalIso('!!(CX.nav && CX.nav.state && CX.nav.state.stopped)'); } catch (e) {}
+      if (stopped) break;
+    } else if (report && report.tocClicks > 0) break;
+  }
+  let iso = null;
+  try {
+    iso = await cdp.evalIso(`(function () {
+      var s = CX.nav.state, p = s.tocPlan;
+      return {
+        stopped: !!s.stopped, stopReason: s.stopReason || '', clicked: s.clicks,
+        plan: p ? { target: p.target || null, blockedAll: !!p.blockedAll, skipped: (p.skipped || []).map(function (x) { return x.state; }) } : null
+      };
+    })()`);
+  } catch (e) { iso = { err: String(e && e.message) }; }
+  let stopLog = null;
+  try {
+    const logs = await dumpLogs(swWsUrl);
+    stopLog = logs.filter(function (l) { return /后面没有可继续的章节|后面没有可做的章节/.test(String(l.text || '')); }).pop() || null;
+  } catch (e) {}
+  cdp.close();
+  return { report: report || {}, iso: iso || {}, stopLog: stopLog };
+}
+
+async function testTocLocked(swWsUrl) {
+  const r = await tocPickRun(swWsUrl, { title: '目录：下一项未解锁 → 跳到后面有任务点的一节', fixture: 'toc-locked.html' });
+  check('目标是有任务点的 1.2.3', r.report.targetId === '1207354477' && /1\.2\.3/.test(String(r.report.target)), 'target=' + r.report.target + ' id=' + r.report.targetId);
+  check('没有点未解锁的 1.2.2', r.report.lockedClicks === 0, 'lockedClicks=' + r.report.lockedClicks);
+  check('只点了一次目录', r.report.tocClicks === 1, 'tocClicks=' + r.report.tocClicks);
+  check('扫描记账里有未解锁项', !!(r.iso.plan && (r.iso.plan.skipped || []).indexOf('locked') >= 0), JSON.stringify(r.iso.plan));
+}
+
+async function testTocDone(swWsUrl) {
+  const r = await tocPickRun(swWsUrl, { title: '目录：下一项已完成 → 跳过它去有任务点的一节', fixture: 'toc-skip-done.html' });
+  check('跳过已完成的 2.2.2', r.report.targetId === '1207354477' && /2\.2\.3/.test(String(r.report.target)), 'target=' + r.report.target + ' id=' + r.report.targetId);
+  check('只点了一次目录', r.report.tocClicks === 1, 'tocClicks=' + r.report.tocClicks);
+}
+
+async function testTocYellow0(swWsUrl) {
+  const r = await tocPickRun(swWsUrl, { title: '目录：黄圈是 0 也算没完成 → 先点它', fixture: 'toc-yellow0.html' });
+  check('先点黄圈 0 的 2.5.2', r.report.targetId === '1207354288' && /2\.5\.2/.test(String(r.report.target)), 'target=' + r.report.target + ' id=' + r.report.targetId);
+  check('没有跳到后面的 2.5.3', !/2\.5\.3/.test(String(r.report.target)), 'target=' + r.report.target);
+  check('只点了一次目录', r.report.tocClicks === 1, 'tocClicks=' + r.report.tocClicks);
+}
+
+async function testTocNone(swWsUrl) {
+  const r = await tocPickRun(swWsUrl, { title: '目录后面只剩已完成/未解锁 → 停止', fixture: 'toc-none.html', expectStop: true, endConfirmMs: 1500 });
+  check('后面没得跳 → 停止', r.iso.stopped === true, JSON.stringify(r.iso));
+  check('停止原因 = no-target', r.iso.stopReason === 'no-target', 'stopReason=' + r.iso.stopReason);
+  check('一次目录都没点', (r.report.tocClicks || 0) === 0, 'tocClicks=' + r.report.tocClicks);
+  check('没去点「下一节」按钮', (r.report.buttonClicks || 0) === 0, 'buttonClicks=' + r.report.buttonClicks);
+  check('日志写明「后面没有可继续的章节」', !!r.stopLog, r.stopLog ? r.stopLog.text : '没有找到相关日志');
+}
+
 async function testTocChild(swWsUrl) {
   console.log('\n[用例] 目录深度优先：先进小标题（4.2 → 4.2.1）');
   await configure(swWsUrl, { player: { autoPlay: false }, nav: { skipEmptyPage: true, nextDelayMs: 300, maxStuckReloads: 1, useToc: true, tocOnly: true } });
@@ -664,6 +771,168 @@ async function testTocChild(swWsUrl) {
   check('优先进入小标题（4.2.1）', report && /4\.2\.1/.test(report.target || ''), 'target=' + (report && report.target));
   check('没有跨到同级下一章', report && !/4\.3/.test(report.target || ''), 'target=' + (report && report.target));
   cdp.close();
+}
+
+async function testSkipExam(swWsUrl) {
+  console.log('\n[用例] 跳过学习检测：进测验页但不作答 → 导航切下一章');
+  await configure(swWsUrl, {
+    player: { autoPlay: false },
+    exam: { skipAnswering: true },
+    nav: { skipEmptyPage: true, nextDelayMs: 300, maxStuckReloads: 1 }
+  });
+  const t = await newTarget(BASE + '/exam-skip.html?chapterId=1207354213');
+  const cdp = new CDP(t.webSocketDebuggerUrl);
+  await cdp.opened();
+  await cdp.send('Runtime.enable');
+  let report = null;
+  const t0 = Date.now();
+  while (Date.now() - t0 < 40000) {
+    await sleep(700);
+    try { report = JSON.parse(await cdp.eval('document.getElementById("toc-report").textContent') || '{}'); } catch (e) { continue; }
+    if (report && report.tocClicks > 0) break;
+  }
+  let iso = null;
+  try {
+    iso = await cdp.evalIso('({ skipped: !!(CX.exam && CX.exam.state && CX.exam.state.skipped), finished: !!(CX.exam && CX.exam.state && CX.exam.state.finished) })');
+  } catch (e) { iso = { err: String(e && e.message) }; }
+  const examReport = JSON.parse(await cdp.eval('document.getElementById("test-report").textContent') || '{}');
+  let skipLog = null;
+  try {
+    const logs = await dumpLogs(swWsUrl);
+    skipLog = logs.filter(function (l) { return /跳过学习检测/.test(String(l.text || '')); }).pop() || null;
+  } catch (e) {}
+  check('没有作答、没有提交', (examReport.submissions || 0) === 0, 'submissions=' + examReport.submissions);
+  check('exam 进入「跳过」状态', !!(iso && iso.skipped === true && iso.finished === true), JSON.stringify(iso));
+  check('导航切到下一章', !!(report && report.tocClicks >= 1) && /2\.8\.2/.test(String(report.target || '')),
+    'target=' + (report && report.target) + ' clicks=' + (report && report.tocClicks));
+  check('切章没有点「下一节」按钮', !!(report && report.buttonClicks === 0), 'buttonClicks=' + (report && report.buttonClicks));
+  check('日志记录了「跳过学习检测」', !!skipLog, skipLog ? skipLog.text : '没有找到相关日志');
+  cdp.close();
+  const back = await configure(swWsUrl, { exam: { skipAnswering: false } });
+  back.cdp.close();
+}
+
+async function testQText() {
+  console.log('\n[用例] 题目原文：明文采集 / 复制格式 / 搜索链接 / 跳转描边');
+  const t = await newTarget(BASE + '/exam.html?chapterId=1');
+  const cdp = new CDP(t.webSocketDebuggerUrl);
+  await cdp.opened();
+  await cdp.send('Runtime.enable');
+  await sleep(2500);
+  let r = null;
+  try {
+    r = await cdp.evalIso(`CX.qtext.localCollect().then(function (r) {
+      var first = r.items[0] || {};
+      return {
+        n: r.items.length,
+        stem: first.stem || '',
+        opt: (first.options && first.options[0] && first.options[0].text) || '',
+        text: CX.qtext.copyText(r.items),
+        url: CX.qtext.searchUrl('【单选题】我国的根本政治制度是（ ）'),
+        clean: CX.qtext.cleanQuery('1【单选题】我国的根本政治制度是（ ）')
+      };
+    })`);
+  } catch (e) { r = { err: String(e && e.message) }; }
+  check('采集到多道题', !!(r && r.n >= 3), 'n=' + (r && r.n) + (r && r.err ? ' ' + r.err : ''));
+  check('题干/选项是明文', !!(r && /我国的根本政治制度/.test(r.stem) && /人民代表大会制度/.test(r.opt)), (r && r.stem) + ' | ' + (r && r.opt));
+  check('搜索链接按模板生成（去题号/题型/空括号）', !!(r && /^https:\/\/www\.baidu\.com\/s\?wd=/.test(r.url) && r.clean === '我国的根本政治制度是'), (r && r.url) + ' | clean=' + (r && r.clean));
+  check('复制文本带序号与题型', !!(r && /^1【单选题】/.test(r.text) && /A、人民代表大会制度/.test(r.text)), String((r && r.text) || '').split('\n')[0]);
+
+  /* 复制内容可选：只要题干 / 题干 + 选项（2026-11-03） */
+  let scope = null;
+  try {
+    scope = await cdp.evalIso(`CX.qtext.localCollect().then(function (r) {
+      var q = r.items[0];
+      return { stem: CX.qtext.copyText([q], 'stem'), both: CX.qtext.copyText([q], 'both') };
+    })`);
+  } catch (e) { scope = { err: String(e && e.message) }; }
+  check('「只要题干」不带选项', !!(scope && /我国的根本政治制度/.test(scope.stem) && !/A、/.test(scope.stem)), JSON.stringify(scope && scope.stem));
+  check('「题干 + 选项」带选项', !!(scope && /A、人民代表大会制度/.test(scope.both)), String((scope && scope.both) || '').split('\n')[1]);
+
+  /* 跳转：面板 → 后台 → 广播回本帧 → 给目标题目加描边 */
+  try { await cdp.evalIso('CX.qtext.focusItem(2)'); } catch (e) {}
+  let hit = false;
+  const t0 = Date.now();
+  while (Date.now() - t0 < 6000) {
+    await sleep(300);
+    try { hit = await cdp.eval(`!!document.querySelector('[data-cx-qtext-hit]')`); } catch (e) { hit = false; }
+    if (hit) break;
+  }
+  check('跳转让目标题目描边', hit === true, 'hit=' + hit);
+
+  /* 描边必须真的是蓝的（2026-11-03 回归：!important 的 transparent 把动画颜色压掉，框看不见） */
+  let look = null;
+  try {
+    look = await cdp.eval(`(function () {
+      var el = document.querySelector('[data-cx-qtext-hit]');
+      if (!el) return { err: 'no hit' };
+      var s = getComputedStyle(el);
+      return { color: s.outlineColor, width: s.outlineWidth, style: s.outlineStyle };
+    })()`);
+  } catch (e) { look = { err: String(e && e.message) }; }
+  check('描边颜色是蓝的（不是透明）', !!(look && /37,\s*99,\s*235/.test(String(look.color)) && parseFloat(look.width) >= 2), JSON.stringify(look));
+
+  /* 2026-11-03 用户报「跳转后蓝框不消失」：描边必须自己退场，连点两题也不能残留 */
+  let gone = false;
+  const t1 = Date.now();
+  while (Date.now() - t1 < 6000) {
+    await sleep(300);
+    try { gone = (await cdp.eval(`document.querySelectorAll('[data-cx-qtext-hit]').length`)) === 0; } catch (e) { gone = false; }
+    if (gone) break;
+  }
+  check('描边 1.7 秒后自动消失', gone === true, 'gone=' + gone);
+
+  try { await cdp.evalIso('CX.qtext.focusItem(0)'); } catch (e) {}
+  await sleep(300);
+  try { await cdp.evalIso('CX.qtext.focusItem(3)'); } catch (e) {}
+  await sleep(500);
+  let marked = -1;
+  try { marked = await cdp.eval(`document.querySelectorAll('[data-cx-qtext-hit]').length`); } catch (e) {}
+  check('连点跳转只保留一个描边', marked === 1, 'marked=' + marked);
+  await sleep(2200);
+  let left = -1;
+  try { left = await cdp.eval(`document.querySelectorAll('[data-cx-qtext-hit]').length`); } catch (e) {}
+  check('连点后描边也自动清掉', left === 0, 'left=' + left);
+
+  /* 2026-11-03：面板越界自愈（跟常态浮窗一致） */
+  try { await cdp.evalIso('CX.qtext.open()'); } catch (e) {}
+  await sleep(800);
+  let moved = null;
+  try {
+    moved = await cdp.eval(`(function () {
+      var h = document.getElementById('__cx_qtext_host');
+      var w = h && h.shadowRoot && h.shadowRoot.getElementById('wrap');
+      if (!w) return { err: 'no panel' };
+      w.style.left = '6000px'; w.style.top = '4000px'; w.style.right = 'auto'; w.style.bottom = 'auto';
+      return { left: Math.round(w.getBoundingClientRect().left) };
+    })()`);
+  } catch (e) { moved = { err: String(e && e.message) }; }
+  await sleep(3400);
+  let fixed = null;
+  try {
+    fixed = await cdp.eval(`(function () {
+      var h = document.getElementById('__cx_qtext_host');
+      var w = h && h.shadowRoot && h.shadowRoot.getElementById('wrap');
+      if (!w) return { err: 'no panel' };
+      var r = w.getBoundingClientRect();
+      return { left: Math.round(r.left), top: Math.round(r.top), w: Math.round(r.width),
+               vw: window.innerWidth, vh: window.innerHeight,
+               inside: r.left >= -1 && r.top >= -1 && r.right <= window.innerWidth + 1 && r.bottom <= window.innerHeight + 1 };
+    })()`);
+  } catch (e) { fixed = { err: String(e && e.message) }; }
+  check('面板越界后自动复位', !!(fixed && fixed.inside === true), JSON.stringify({ moved: moved, fixed: fixed }));
+  cdp.close();
+
+  /* 无题目页：模块在，但采不到题目 */
+  const t2 = await newTarget(BASE + '/space.html');
+  const cdp2 = new CDP(t2.webSocketDebuggerUrl);
+  await cdp2.opened();
+  await cdp2.send('Runtime.enable');
+  await sleep(1500);
+  let n2 = -1;
+  try { n2 = await cdp2.evalIso('CX.qtext.localCollect().then(function (r) { return r.items.length; })'); } catch (e) {}
+  check('无题目页采集为空', n2 === 0, 'items=' + n2);
+  cdp2.close();
 }
 
 async function testHud() {
@@ -756,6 +1025,12 @@ async function testHud() {
     if (which === 'all' || which === 'review') await testReviewPage(sw.webSocketDebuggerUrl);
     if (which === 'all' || which === 'toc') await testTocNav(sw.webSocketDebuggerUrl);
     if (which === 'all' || which === 'toc-child') await testTocChild(sw.webSocketDebuggerUrl);
+    if (which === 'all' || which === 'toc-locked') await testTocLocked(sw.webSocketDebuggerUrl);
+    if (which === 'all' || which === 'toc-done') await testTocDone(sw.webSocketDebuggerUrl);
+    if (which === 'all' || which === 'toc-yellow0') await testTocYellow0(sw.webSocketDebuggerUrl);
+    if (which === 'all' || which === 'toc-none') await testTocNone(sw.webSocketDebuggerUrl);
+    if (which === 'all' || which === 'skip-exam') await testSkipExam(sw.webSocketDebuggerUrl);
+    if (which === 'all' || which === 'qtext') await testQText();
     if (which === 'all' || which === 'empty') await testEmptyPage(sw.webSocketDebuggerUrl);
     if (which === 'all' || which === 'empty-optin') await testEmptyOptIn(sw.webSocketDebuggerUrl);
     if (which === 'all' || which === 'empty-guard') await testEmptyButPlaying(sw.webSocketDebuggerUrl);

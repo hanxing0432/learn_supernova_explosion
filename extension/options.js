@@ -90,6 +90,11 @@ const SECTIONS = [
       { path: 'nav.useToc', label: '优先走右侧目录切章', type: 'bool', desc: '目录比「下一节」按钮稳（按钮常被弹窗卡住）。' },
       { path: 'nav.tocOnly', label: '只走目录', type: 'bool', desc: '完全不点「下一节」按钮，目录里找不到就等下一轮。', help: '这一项开着时，上面的「优先走右侧目录」没有实际作用。' },
       {
+        path: 'nav.skipLockedToc', label: '下一节未解锁时往后找', type: 'bool',
+        desc: '目录里下一项未解锁（或已完成）时，继续往后找第一项可做的章节；后面只剩已完成 / 未解锁的章节就停止。',
+        help: '标记来自目录行尾：绿勾＝任务点已完成（跳过）、黄色数字＝有任务点未完成（就是它，圈里是 0 也照样进）、灰旗＝未解锁（跳过）；没有图标的行按可做处理。'
+      },
+      {
         path: 'nav.videoOnlyMode', label: '只有视频、没有任务点的页', type: 'select',
         options: [['watch', '看完再继续（默认）'], ['skip', '直接跳过，不看']],
         desc: '这类页面站点不记进度；「跳过」只省看视频的时间，不会跳过测验。'
@@ -128,6 +133,11 @@ const SECTIONS = [
       { path: 'exam.randomDelayMs', label: '每题操作间隔', type: 'number', min: 0, max: 3000, step: 50, unit: 'ms' },
       { path: 'exam.submitConfirm', label: '自动确认提交弹窗', type: 'bool' },
       { path: 'exam.giveUpToNext', label: '轮数用尽就跳下一章', type: 'bool', desc: '跑满「最多提交轮数」仍没过时，放弃本节测验并让导航切下一章，不再卡死在这一节。关掉则停在原地提示人工处理。' },
+      {
+        path: 'exam.skipAnswering', label: '跳过学习检测（进页面但不作答）', type: 'bool',
+        desc: '仍会点开任务条上的「学习测验」入口，但既不调 AI 也不提交，交给导航直接切下一章。',
+        help: '适合「只想把视频过一遍、卷子留着自己做」：点开入口就走，不占用你的提交次数。'
+      },
       { path: 'exam.allowRealExam', label: '正式考试也自动作答', type: 'bool', danger: true, desc: '默认关闭：只处理学习检测 / 章节测验 / 作业，不碰正式考试。' }
     ]
   },
@@ -152,6 +162,29 @@ const SECTIONS = [
       { path: 'ai.jsonMode', label: '使用 JSON 模式', type: 'bool', desc: '接口不支持 response_format 时必须关。' },
       { path: 'ai.extraHeaders', label: '额外请求头', type: 'textarea', desc: '每行一个，格式 key: value。部分中转 / 自建服务需要。' },
       { path: 'ai.systemPrompt', label: '自定义系统提示词', type: 'textarea', desc: '留空用内置提示词；填写则完全覆盖。' }
+    ]
+  },
+  {
+    key: 'qtext', title: '题目原文',
+    tip: '题目字体被站点加密（.font-cxsecret）时，浮窗里这个按钮能把题干和选项还原成明文：一键复制、按题号跳转、直接搜索。没还原的字显示成 □，面板底部会写还剩几个。',
+    fields: [
+      {
+        path: 'ui.questionCopy', label: '浮窗「题目原文」按钮', type: 'bool',
+        desc: '点它弹出面板：当前题目（含字体加密的）还原成明文，可一键复制、按题号跳转、直接搜索。',
+        help: '面板里的「跳转」会把页面滚到那道题并描边 1.5 秒；「搜索」按下面的模板新开一个标签页。题目在子帧里也能收（跨帧拼成一份、连续编号）。'
+      },
+      {
+        path: 'ui.copyScope', label: '复制内容', type: 'select',
+        options: [['both', '题干 + 选项（默认）'], ['stem', '只要题干']],
+        desc: '面板里「复制 / 一键复制 / 搜索时顺带复制」都按这一项；搜索框里的关键词始终只用题干，不受它影响。',
+        help: '粘去搜索用「只要题干」更干净；要拿去问 AI 就留「题干 + 选项」。'
+      },
+      {
+        path: 'ui.searchUrl', label: '搜索题目模板', type: 'text',
+        desc: '必须含 %s（题干会 URL 编码后填进去）。默认百度；Bing：https://www.bing.com/search?q=%s ；Google：https://www.google.com/search?q=%s',
+        help: '可以换成校内平台或自己常用的搜题站，只要带 %s 就行。模板不合格时自动退回百度。'
+      },
+      { path: 'ui.searchCopy', label: '搜索时同时复制题干', type: 'bool', desc: '打开搜索页的同时把题干写进剪贴板，方便粘到搜题站 / 群里。' }
     ]
   },
   {
@@ -268,7 +301,9 @@ const GATE = {
   nav: { path: 'nav.autoNext', label: '自动下一节' },
   quiz: { path: 'videoQuiz.enabled', label: '弹题自动答' },
   exam: { path: 'exam.enabled', label: 'AI 学习检测' },
-  ui: { path: 'ui.hud', label: '页面浮窗' }
+  ui: { path: 'ui.hud', label: '页面浮窗' },
+  /* 2026-11-03：题目原文/搜索不吃「自动学习总开关」，单独标开关状态 */
+  qtext: { path: 'ui.questionCopy', label: '题目原文' }
 };
 
 function pill(on, text) {
@@ -284,7 +319,8 @@ function gateHTML(key) {
   }
   const masterOn = getPath(cfg, 'enabled') !== false;
   const on = getPath(cfg, g.path) !== false;
-  if (!masterOn && key !== 'ui') {
+  /* 「界面」和「题目原文」不归总开关管，别跟着标「总开关关」 */
+  if (!masterOn && key !== 'ui' && key !== 'qtext') {
     return '<span class="state blocked" title="自动学习总开关关着，这一项现在不执行">总开关关</span>';
   }
   return pill(on, esc(g.label) + (on ? ' 开' : ' 关'));
@@ -300,17 +336,31 @@ function sectionNote(key) {
   if (key === 'play') return '倍速 ' + esc(String(Number(ka.rate) || 1)) + '×';
   if (key === 'nav') {
     return (nv.tocOnly === false ? '目录优先' : '只走目录') +
+      (nv.skipLockedToc === false ? '' : ' · 未解锁往后找') +
       ' · 空页' + (nv.advanceWhenNoTask === false ? '停' : '跳过');
   }
   if (key === 'quiz') return '作答 ' + esc(modeName(vq.mode));
   if (key === 'exam') {
     return '作答 ' + esc(modeName(ex.mode)) + ' · 最多 ' + esc(String(Number(ex.maxRounds) || 3)) + ' 轮' +
+      (ex.skipAnswering === true ? ' · 跳过作答' : '') +
       (ex.allowRealExam === true ? ' · 正式考试也答' : '');
   }
   if (key === 'ai') {
     if (aiUnconfigured()) return '答题会失败';
     const p = CFG.PROVIDERS[(cfg.ai || {}).provider] || {};
     return esc(p.label || '自定义') + ' · ' + esc((cfg.ai || {}).model || '未填模型');
+  }
+  if (key === 'qtext') {
+    const on = getPath(cfg, 'ui.questionCopy') !== false;
+    let host = '百度';
+    try {
+      const u = new URL(String(getPath(cfg, 'ui.searchUrl') || ''));
+      host = /baidu\.com$/i.test(u.hostname) ? '百度'
+        : /bing\.com$/i.test(u.hostname) ? 'Bing'
+          : /google\.com$/i.test(u.hostname) ? 'Google'
+            : u.hostname;
+    } catch (e) { host = '模板无效'; }
+    return '浮窗按钮 ' + (on ? '开' : '关') + ' · 搜索 ' + esc(host);
   }
   return '';
 }

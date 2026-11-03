@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>目录标记：黄色 0 也算没完成</title>
+<style>
+  body { font: 14px/1.7 "Microsoft YaHei", sans-serif; background: #f5f7fb; margin: 0; padding: 16px; }
+  .toc { width: 340px; background: #fff; border-radius: 8px; padding: 10px; }
+  .posCatalog_select { position: relative; color: #181e33; padding: 4px 0; }
+  .posCatalog_name { display: block; padding-right: 34px; cursor: pointer; }
+  .posCatalog_sbar { display: inline-block; font-style: normal; margin-right: 4px; }
+  .icon_Completed, .catalog_points_yi, .catalog_points_sa {
+    position: absolute; right: 4px; top: 6px; width: 20px; height: 20px; text-align: center;
+    border-radius: 20px; font: 12px/20px arial; color: #fff;
+  }
+  .icon_Completed { background: #2eb872; }
+  .catalog_points_yi { background: #ffb61c; }
+  .catalog_points_sa { background: #d9dde5; }
+  .prevTips > .prevHoverTips {
+    position: absolute; right: 30px; top: -4px; opacity: 0; visibility: hidden; white-space: nowrap;
+    background: rgba(24, 30, 51, .8); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  }
+  #prevNextFocusNext { margin-top: 14px; padding: 8px 22px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+  #test-report { position: fixed; right: 8px; bottom: 8px; width: 320px; height: 130px; font-size: 10px; background: #08101f; color: #9fb6d4; overflow: auto; padding: 6px; border-radius: 6px; white-space: pre-wrap; }
+</style></head>
+<body>
+  <div class="ans-job-video" aria-label="学习视频 任务点已完成"></div>
+  <div class="toc">
+    <div class="posCatalog_select posCatalog_active" id="cur1207354213">
+      <span class="posCatalog_name" title="当前章节" onclick="getTeacherAjax('266214610','157743790','1207354213');"><em class="posCatalog_sbar">2.5 实验室安全</em> 当前章节 </span>
+      <span class="icon_Completed prevTips"><span class="prevHoverTips">已完成<i></i></span></span>
+    </div>
+    <div class="posCatalog_select" id="cur1207354288">
+      <span class="posCatalog_name" title="黄圈 0 的一节" onclick="getTeacherAjax('266214610','157743790','1207354288');"><em class="posCatalog_sbar">2.5.2</em> 黄圈 0 的一节 </span>
+      <span class="catalog_points_yi prevTips"><span class="orangeNew">0</span></span>
+    </div>
+    <div class="posCatalog_select" id="cur1207354290">
+      <span class="posCatalog_name" title="有任务点的一节" onclick="getTeacherAjax('266214610','157743790','1207354290');"><em class="posCatalog_sbar">2.5.3</em> 有任务点的一节 </span>
+      <input type="hidden" value="1" class="jobUnfinishCount">
+      <span class="catalog_points_yi prevTips"><span class="prevHoverTips">1个待完成任务点<i></i></span><span class="orangeNew">1</span></span>
+    </div>
+  </div>
+  <button id="prevNextFocusNext">下一节</button>
+  <pre id="test-report">{}</pre>
+<script>
+(function () {
+  var state = { tocClicks: 0, target: '', targetId: '', lockedClicks: 0, buttonClicks: 0 };
+  function paint() { document.getElementById('test-report').textContent = JSON.stringify(state); }
+  function hit(label, id) { state.tocClicks++; state.target = label || ''; state.targetId = id || ''; paint(); }
+  window.getTeacherAjax = function (a, b, id) {
+    var key = "'" + id + "'", label = '';
+    document.querySelectorAll('.posCatalog_name').forEach(function (el) {
+      if (!label && String(el.getAttribute('onclick') || '').indexOf(key) >= 0) label = el.innerText.trim();
+    });
+    hit(label, id);
+    return '';
+  };
+  document.querySelectorAll('.posCatalog_name').forEach(function (el) {
+    el.addEventListener('click', function () {
+      if (el.closest('.posCatalog_select').querySelector('.catalog_points_sa')) state.lockedClicks++;
+      var m = (el.getAttribute('onclick') || '').match(/'(\d+)'/g) || [];
+      hit(el.innerText.trim(), m.length >= 3 ? m[2].replace(/'/g, '') : '');
+    });
+  });
+  document.getElementById('prevNextFocusNext').addEventListener('click', function () { state.buttonClicks++; paint(); });
+  paint();
+})();
+</script>
+</body></html>

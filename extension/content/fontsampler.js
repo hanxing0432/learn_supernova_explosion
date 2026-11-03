@@ -765,6 +765,37 @@ details .blk .txt { font-family: ui-monospace, Consolas, monospace; color: #b9c3
     set(pill, false);
   }
 
+  /* 2026-11-03：跟常态浮窗一样自愈 —— 窗口变小、拖到屏幕外、或记住的坐标来自别处时，
+   * 3 秒内自动回到默认角落（右上），不会卡在看不见的地方。 */
+  let posClampTimer = 0;
+  function clampPos() {
+    if (state.pos) {
+      const w = root.innerWidth || 800;
+      const h = root.innerHeight || 600;
+      const el = (panel && panel.style.display !== 'none') ? panel : pill;
+      const pw = (el && el.offsetWidth) || 340;
+      const ph = (el && el.offsetHeight) || 200;
+      const p = state.pos;
+      const out = p.left < 0 || p.top < 0 ||
+        p.left > w - 60 || p.top > h - 40 ||
+        p.left + pw > w + 8 || p.top + ph > h + 8;
+      if (out) {
+        state.pos = null;
+        state.corner = 'tr';
+        try { stSet({ cxSamplePos: null }); } catch (e) {}
+        CX.debug('字体采集器位置越界，已复位到右上角');
+      }
+    }
+    applyPos();
+  }
+  try {
+    root.addEventListener('resize', function () {
+      clearTimeout(posClampTimer);
+      posClampTimer = setTimeout(clampPos, 300);
+    });
+    setInterval(clampPos, 3000);
+  } catch (e) {}
+
   /* 拖拽：面板拖标题栏，胶囊整块都能拖；拖过就记住位置 */
   let dragging = null;
   function startDragFor(el, e) {
@@ -1320,8 +1351,11 @@ details .blk .txt { font-family: ui-monospace, Consolas, monospace; color: #b9c3
   /* ---------------- 开关 ---------------- */
   async function setEnabled(on) {
     const got = await stGet(['cxConfig']);
-    const cfg = got.cxConfig || {};
-    cfg.samples = Object.assign({ enabled: true }, cfg.samples || {}, { enabled: !!on });
+    /* 必须经 CFG.normalize 再写回：否则写出去的配置没有 version，
+     * 下次读回来会再跑一遍迁移（v4 会把 samples.enabled 强制关），表现为「刚打开又自己关掉」。 */
+    const C = root.CXConfig;
+    const cfg = (C && C.normalize) ? C.normalize(got.cxConfig) : (got.cxConfig || {});
+    cfg.samples = Object.assign({ enabled: false }, cfg.samples || {}, { enabled: !!on });
     await stSet({ cxConfig: cfg });
     state.enabled = !!on;
     applyEnabled();
@@ -1425,11 +1459,19 @@ details .blk .txt { font-family: ui-monospace, Consolas, monospace; color: #b9c3
     }, 1500);
   }
 
-  /* 开关：读配置决定是否挂 UI；popup 里切换后这里实时跟随 */
+  /* 开关：读配置决定是否挂 UI；popup 里切换后这里实时跟随。
+   * 2026-11-03：判定必须走 CFG.normalize —— 以前用 `s.enabled !== false`，
+   * 缺这个键时会被当成「开」，而新版默认已经改成关（调试卡里初次安装全关）。 */
+  function readEnabled(raw) {
+    try {
+      const C = root.CXConfig;
+      const cfg = C && C.normalize ? C.normalize(raw) : raw;
+      return !!(cfg && cfg.samples && cfg.samples.enabled === true);
+    } catch (e) { return false; }
+  }
   (async function boot() {
     const got = await stGet(['cxConfig', 'cxSamplePos']);
-    const s = (got.cxConfig && got.cxConfig.samples) || {};
-    state.enabled = s.enabled !== false;
+    state.enabled = readEnabled(got.cxConfig);
     if (got.cxSamplePos && typeof got.cxSamplePos.left === 'number' && typeof got.cxSamplePos.top === 'number') {
       state.pos = { left: got.cxSamplePos.left, top: got.cxSamplePos.top };
       if (!sanitizePos()) {
@@ -1440,8 +1482,7 @@ details .blk .txt { font-family: ui-monospace, Consolas, monospace; color: #b9c3
     try {
       chrome.storage.onChanged.addListener(function (changes, area) {
         if (area !== 'local' || !changes.cxConfig) return;
-        const nv = (changes.cxConfig.newValue || {}).samples || {};
-        const on = nv.enabled !== false;
+        const on = readEnabled(changes.cxConfig.newValue);
         if (on === state.enabled) return;
         state.enabled = on;
         applyEnabled();

@@ -48,7 +48,7 @@
   };
 
   const DEFAULTS = {
-    version: 3,
+    version: 4,
     /* 总开关：关掉后所有自动化停止（防暂停仍生效可选） */
     enabled: true,
     /* 防暂停 / 后台播放 */
@@ -96,6 +96,11 @@
       advanceWhenNoTask: true,   // 无任务点的空页面也自动跳过（2026-10-28 接线；关掉会停在空页等人）
       useToc: true,           // 优先点右侧目录里的下一章（比「下一节」按钮稳）
       tocOnly: true,          // 只走目录切章，不点「下一节」按钮
+      /* 2026-11-03：目录标记智能跳章。
+       * 真机目录的三种标记：绿勾=任务点已完成、黄色数字=有任务点未完成（数字是 0 也算没完成）、
+       * 灰旗=未解锁（这类行连 onclick 都没有）。打开后：下一项没完成但锁着时，继续往后找
+       * 「第一项既没绿勾也没灰旗」的章节；后面只剩绿勾/灰旗 → 停止，不再原地重试。 */
+      skipLockedToc: true,
       /* 没有任务点、只有视频的页面怎么处理：
        *   'watch' = 看完再继续（默认，保持原行为）
        *   'skip'  = 这页站点不记任务点，视频不用看，直接跳到下一节 */
@@ -117,7 +122,12 @@
       submitConfirm: true,    // 自动点确认弹窗
       allowRealExam: false,   // 正式考试页（exam-ans）是否也自动作答
       /* 2026-10-31：轮数用尽仍没过 → 放弃本节，交给导航切下一章（不再死卡在这一节） */
-      giveUpToNext: true
+      giveUpToNext: true,
+      /* 2026-11-03：跳过学习检测。
+       * 语义按用户要求是「仍然进测验页，但不作答」：nav 照旧点任务条上的测验入口，
+       * 进去之后 exam 不解析、不调 AI、不提交，直接广播「跳过」让导航切下一章。
+       * 想在页面上停住自己看题，别开这个 —— 它就是为了尽快离开。 */
+      skipAnswering: false
     },
     /* AI 接口 */
     ai: {
@@ -132,13 +142,22 @@
       extraHeaders: '',       // 每行 key: value
       systemPrompt: ''
     },
-    /* 字体加密样本采集器：样本与字形字典存在扩展本地，不需要本地服务 */
+    /* 字体加密样本采集器：样本与字形字典存在扩展本地，不需要本地服务。
+     * 2026-11-03：默认值从 true 改成 false —— 用户在设置页「调试」卡里看到的开关，
+     * 初次安装（空存储）必须全是关的。要采集就手动打开（设置页或采集面板的 ⏻ 按钮）。 */
     samples: {
-      enabled: true
+      enabled: false
     },
     /* 界面 */
     ui: {
       hud: true,              // 页面悬浮状态卡
+      /* 2026-11-03：浮窗里的「题目原文」按钮 —— 把题目还原成明文，可复制 / 跳转 / 搜索 */
+      questionCopy: true,
+      /* 搜索题目用的 URL 模板，必须含 %s（题干会 URL 编码后填进去） */
+      searchUrl: 'https://www.baidu.com/s?wd=%s',
+      searchCopy: false,      // 点「搜索」时顺手把题干写进剪贴板（往搜题站里粘时开）
+      /* 复制内容：'both' = 题干 + 选项；'stem' = 只要题干（粘去搜索时更干净） */
+      copyScope: 'both',
       hudPosition: { right: 16, bottom: 96 },
       logLevel: 'info'        // debug | info | warn | error
     }
@@ -188,6 +207,17 @@
         if (!out.nav || typeof out.nav !== 'object') out.nav = {};
         if (out.nav.advanceWhenNoTask === false) out.nav.advanceWhenNoTask = true;
         out.version = 3;
+      }
+      /* v3 → v4（2026-11-03）：调试卡里的开关一律默认关。
+       * 采集器以前默认 true，老配置里那个 true 就是旧默认值、不是用户的选择，
+       * 这里强制关一次（跟 v2→v3 处理 dev.* 的做法一致）；想采集再手动开。
+       * 新增 exam.skipAnswering（跳过学习检测：进页面但不作答），默认 false，老配置补上即可。 */
+      if (!out.version || out.version < 4) {
+        if (!out.samples || typeof out.samples !== 'object') out.samples = {};
+        out.samples.enabled = false;
+        if (!out.exam || typeof out.exam !== 'object') out.exam = {};
+        if (out.exam.skipAnswering === undefined) out.exam.skipAnswering = false;
+        out.version = 4;
       }
       return out;
     }
