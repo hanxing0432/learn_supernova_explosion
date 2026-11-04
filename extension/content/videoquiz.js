@@ -22,6 +22,14 @@
 
   function cfg() { return CX.cfg.videoQuiz || {}; }
 
+  /* 2026-11-04：AI 总开关关掉时，「AI 优先」退回暴力枚举（视频弹题同样受 AI 开关管） */
+  function effMode() {
+    const m = cfg().mode || 'ai-first';
+    if (m === 'off') return 'off';
+    if (m === 'brute') return 'brute';
+    return (CX.aiOn && !CX.aiOn()) ? 'brute' : 'ai-first';
+  }
+
   function combos(n) {
     const out = [];
     for (let mask = 1; mask < (1 << n); mask++) {
@@ -114,7 +122,7 @@
       try { st.savedPlayback = CX.player && CX.player.qVideo() ? { t: CX.player.qVideo().currentTime } : null; } catch (e) {}
     }
 
-    const mode = cfg().mode || 'ai-first';
+    const mode = effMode();
     if (mode === 'off') return;
 
     st.busy = true;

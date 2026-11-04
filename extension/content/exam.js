@@ -41,7 +41,23 @@
    * 进来之后这里不解析题目、不调 AI、不提交、也不点「开始答题」，
    * 只广播一次「跳过」，由导航切下一章。
    * 目的就是尽快离开这一页，所以别在这儿等任何判分/任务点标记。 */
-  function skipAnswering() { return cfg().skipAnswering === true; }
+  function skipAnswering() { return CX.examMode() === 'skip'; }
+  function mode() { return CX.examMode(); }
+
+  /* 2026-11-04：跳过模式下放宽「这是不是测验页」的判定。
+   * 有的课程卷子不用 .questionLi / .TiMu（新版 / 定制皮肤），内置选择器全落空时
+   * 以前既不答也不跳。这里只给「跳过」用：看到选项控件或题目文案 + 提交按钮就算。 */
+  function looksLikeQuizLoose() {
+    try {
+      const inputs = CX.qsa('input[type="radio"],input[type="checkbox"]', document).filter(CX.visible);
+      if (inputs.length >= 2) return true;
+      const t = CX.oneLine(CX.pageText(document.body)).slice(0, 2000);
+      if (/章节测验|学习测验|单元测验|课后测验|题量\s*[:：]?\s*\d|答题时间|满分\s*[:：]?\s*\d/.test(t)) {
+        if (P.findSubmitButton && P.findSubmitButton()) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
 
   function skipNow() {
     const first = !st.skipped;
@@ -563,7 +579,7 @@
      *   2026-10-28：这个选项以前只在设置页露脸 —— bruteAnswers() 定义了却零调用，
      *   于是「选了没效果」。每轮提交前 run() 会把本轮答案推进 st.history，
      *   nextUnusedCombo() 因此能在下一轮自然换到下一个候选（缓存命中过的题不动）。 */
-    if ((cfg().mode || 'ai-first') === 'brute') {
+    if (mode() === 'brute') {
       const b = bruteAnswers(qs);
       let filled = 0;
       Object.keys(b).forEach(function (k) {
@@ -1220,7 +1236,7 @@
     }
     /* 轮数上限：暴力枚举每轮只试一个候选（单选 4 选项就要 4 轮），
      * 用 maxRounds 原值等于永远试不完；这里给它翻倍（默认 3 → 6 轮）。 */
-    const bruteMode = (cfg().mode || 'ai-first') === 'brute';
+    const bruteMode = mode() === 'brute';
     /* 枚举模式跟 AI 无关：不配 API Key 也能跑。这里明确打一次日志，
      * 免得看到"没配 Key"的提示就以为坏了（或配了 Key 却以为它在用 AI）。 */
     if (bruteMode && !st.bruteNoted) {
@@ -1259,8 +1275,8 @@
 
     st.busy = true;
     try {
-      /* 没配 Key 时不要瞎猜着交卷，直接停手等用户配置 */
-      if ((cfg().mode || 'ai-first') === 'ai-first') {
+      /* 没配 Key 时不要瞎猜着交卷，直接停手等用户配置（AI 总开关关掉时走 brute，不会到这里） */
+      if (mode() === 'ai-first') {
         const ai = CX.cfg.ai || {};
         const hasKey = !!ai.apiKey || /127\.0\.0\.1|localhost/.test(ai.baseUrl || '');
         if (!hasKey) {
@@ -1580,14 +1596,16 @@
     /* 2026-10-30：作答期间持续给顶层打「忙碌」时间戳，nav 读到就不会抢着点测验入口
      * （它每点一次都会让站点重载答题 iframe，作答直接丢）。 */
     try { if (st.busy || st.redoing) root.top.__cxExamBusyAt = Date.now(); } catch (e) {}
-    if (!CX.cfg.enabled || cfg().enabled === false) return;
-    if (st.finished) return;
-    /* 2026-11-03：跳过模式下不点「开始答题」、不判分、不作答；
-     * 只确认「当前确实是测验页」，然后广播给导航切下一章。 */
+    if (!CX.cfg.enabled) return;
+    /* 2026-11-04：跳过判断必须放在最前面，且不看 exam.enabled / st.finished。
+     * 以前它在 `if (st.finished) return;` 之后 —— 只要之前因为「没配 Key」把本页置成 finished，
+     * 跳过就永远走不到；另外用户完全可能关掉「AI 学习检测」只想「进页面就走」，那也不该被挡住。 */
     if (skipAnswering()) {
-      if (P.looksLikeExamPage()) skipNow();
+      if (P.looksLikeExamPage() || looksLikeQuizLoose()) skipNow();
       return;
     }
+    if (cfg().enabled === false) return;
+    if (st.finished) return;
     /* 已批阅页：只判定 + 通知导航，不再答题 */
     if (handleReviewPage()) { stableTicks = 0; return; }
     if (!P.looksLikeExamPage()) {
@@ -1614,18 +1632,18 @@
   /* 用户点「启动」（总开关 false → true）时清掉"已结束"标记，否则 st.finished 一旦置位，
    * 轮询会永远 return，表现就是"点了启动没反应"。 */
   let lastEnabledForReset = !!(CX.cfg && CX.cfg.enabled);
-  let lastSkipForReset = !!(CX.cfg && CX.cfg.exam && CX.cfg.exam.skipAnswering);
+  let lastModeForReset = CX.examMode ? CX.examMode() : 'ai-first';
   CX.onConfig(function (cfgNow) {
-    /* 2026-11-03：切换「跳过学习检测」时清掉本页的结束标记，
-     * 否则关掉开关后 st.finished/skipped 一直挡着，本页永远不会再作答。 */
-    const skipNowOn = !!(cfgNow && cfgNow.exam && cfgNow.exam.skipAnswering);
-    if (skipNowOn !== lastSkipForReset) {
-      lastSkipForReset = skipNowOn;
+    /* 2026-11-04：作答方式变化时清掉本页的结束标记（跳过 ↔ 答题、AI ↔ 暴力 都要能即时切换），
+     * 否则 st.finished/skipped 一直挡着，本页永远不会重新评估。 */
+    const modeNow = CX.examMode ? CX.examMode(cfgNow) : 'ai-first';
+    if (modeNow !== lastModeForReset) {
+      lastModeForReset = modeNow;
       st.finished = false;
       st.skipped = false;
       st.busy = false;
       st.redoing = false;
-      CX.info(skipNowOn ? '已打开「跳过学习检测」：本页不再作答' : '已关闭「跳过学习检测」：恢复自动作答');
+      CX.info('作答方式已切到「' + (modeNow === 'skip' ? '跳过（进页面不作答）' : modeNow === 'brute' ? '暴力枚举' : 'AI 优先') + '」：重新评估本页');
     }
     const on = !!(cfgNow && cfgNow.enabled);
     if (on && !lastEnabledForReset && st.finished) {

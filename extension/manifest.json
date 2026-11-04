@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "学习通全自动助手（播放·弹题·AI答题）",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "自动播放不暂停、视频弹题自动作答、学完自动下一节、学习检测调用 AI 答题；内置字体加密样本采集器（屏幕右上角可拖拽浮窗，样本存扩展本地）。",
   "minimum_chrome_version": "111",
   "permissions": [

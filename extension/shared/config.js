@@ -48,7 +48,7 @@
   };
 
   const DEFAULTS = {
-    version: 4,
+    version: 5,
     /* 总开关：关掉后所有自动化停止（防暂停仍生效可选） */
     enabled: true,
     /* 防暂停 / 后台播放 */
@@ -110,8 +110,16 @@
     },
     /* 学习检测 / 章节测验 / 作业 */
     exam: {
+      /* 2026-11-04：这一项只管「要不要碰测验页」：
+       *   false = 完全不处理（导航连任务条上的测验入口都不点，任务点做完直接切下一章）
+       *   true  = 按下面的 mode 处理 */
       enabled: true,
-      mode: 'ai-first',       // ai-first | brute | off
+      /* 作答方式：
+       *   'ai-first' = 先问 AI，失败退回枚举
+       *   'brute'    = 不调 AI，按组合枚举
+       *   'skip'     = 进测验页但不作答，进去就交给导航切下一章（用户要的「进去一下」）
+       * 另外：AI 总开关（ai.enabled）关掉时，'ai-first' 会按 'brute' 跑。 */
+      mode: 'ai-first',
       passScore: 60,          // 仅历史兼容：2026-10-28 起通过判定改为「看学习测验任务点是否完成」，不再用分数
       maxRounds: 3,           // 最多提交轮数（实测连打 4 轮就会把学习页主线程打死）
       maxAiRounds: 2,         // AI 连续这么多轮没过就联网检索重答
@@ -122,15 +130,13 @@
       submitConfirm: true,    // 自动点确认弹窗
       allowRealExam: false,   // 正式考试页（exam-ans）是否也自动作答
       /* 2026-10-31：轮数用尽仍没过 → 放弃本节，交给导航切下一章（不再死卡在这一节） */
-      giveUpToNext: true,
-      /* 2026-11-03：跳过学习检测。
-       * 语义按用户要求是「仍然进测验页，但不作答」：nav 照旧点任务条上的测验入口，
-       * 进去之后 exam 不解析、不调 AI、不提交，直接广播「跳过」让导航切下一章。
-       * 想在页面上停住自己看题，别开这个 —— 它就是为了尽快离开。 */
-      skipAnswering: false
+      giveUpToNext: true
     },
     /* AI 接口 */
     ai: {
+      /* 2026-11-04：AI 总开关。AI 不只服务学习检测，视频弹题也用它 ——
+       * 关掉后两边都退回暴力枚举（仍会作答，只是不联网、不花 token）。 */
+      enabled: true,
       provider: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: '',
@@ -215,10 +221,23 @@
       if (!out.version || out.version < 4) {
         if (!out.samples || typeof out.samples !== 'object') out.samples = {};
         out.samples.enabled = false;
-        if (!out.exam || typeof out.exam !== 'object') out.exam = {};
-        if (out.exam.skipAnswering === undefined) out.exam.skipAnswering = false;
         out.version = 4;
       }
+      /* v4 → v5（2026-11-04）：
+       *   · 「跳过学习检测」从独立开关（exam.skipAnswering）并进 exam.mode，取值 'skip'；
+       *   · 新增 AI 总开关 ai.enabled（同时管视频弹题与学习检测）；
+       *   · exam.mode 统一收敛到 ai-first / brute / skip（以前注释里写的 'off' 从没实现过）。 */
+      if (!out.version || out.version < 5) {
+        if (!out.exam || typeof out.exam !== 'object') out.exam = {};
+        if (out.exam.skipAnswering === true) out.exam.mode = 'skip';
+        delete out.exam.skipAnswering;
+        if (!out.ai || typeof out.ai !== 'object') out.ai = {};
+        if (out.ai.enabled === undefined) out.ai.enabled = true;
+        out.version = 5;
+      }
+      /* 收敛作答方式：认不出的值一律回 ai-first */
+      if (!out.exam || typeof out.exam !== 'object') out.exam = {};
+      if (['ai-first', 'brute', 'skip'].indexOf(out.exam.mode) < 0) out.exam.mode = 'ai-first';
       return out;
     }
   };

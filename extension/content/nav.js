@@ -34,6 +34,8 @@
     chapterKey: '',     /* 2026-10-30：当前章节标识，用来做「切章落地期」 */
     chapterAt: 0,
     quizDoneAnnounced: '',  /* 已经广播过「测验任务点完成」的章节 */
+    /* 2026-11-04：跳过学习检测时，已经排过「4 秒后切章」的章节 key */
+    skipFallbackKey: '',
     /* 2026-11-03：目录智能跳章 */
     failedToc: {},          /* 点了没切成的目录项（章节 id → 时间），下次跳过它 */
     noTargetSince: 0,       /* 「后面只剩已完成/未解锁」的起始时间 */
@@ -46,10 +48,14 @@
 
   function navCfg() { return CX.cfg.nav || {}; }
 
-  /* 2026-11-03：设置里开了「跳过学习检测」（exam.skipAnswering）时，
-   * 导航不再为「任务条上还有未完成的测验入口」白等，也不在测验页上卡住。 */
+  /* 2026-11-04：作答方式为「跳过（进页面不作答）」时，导航不再为「任务条上还有未完成的测验入口」
+   * 白等，也不在测验页上卡住。取值统一走 CX.examMode()（ai-first / brute / skip）。 */
   function examSkipOn() {
-    try { return !!(CX.cfg && CX.cfg.exam && CX.cfg.exam.skipAnswering === true); } catch (e) { return false; }
+    try { return !!(CX.examMode && CX.examMode() === 'skip'); } catch (e) { return false; }
+  }
+  /* 「自动处理学习检测」关掉时，导航连任务条上的测验入口都不点，任务点做完直接切下一章 */
+  function examEnabled() {
+    try { return !(CX.cfg && CX.cfg.exam && CX.cfg.exam.enabled === false); } catch (e) { return true; }
   }
 
   function send(msg) {
@@ -265,6 +271,8 @@
    * （2026-10-28：上一版限制 `!CX.isTop 直接 return null`，导致内容帧看不到"2学习检测"，
    *   把它当成"只有视频没任务点"的页直接切走了。） */
   function findQuizTaskEntry() {
+    /* 2026-11-04：「自动处理学习检测」关掉 → 完全不碰测验入口（以前会点开然后卡住） */
+    if (!examEnabled()) return null;
     const own = scanQuizEntryIn(document);
     if (own) return own;
     const docs = CX.walkAccessibleParents().map(function (w) {
@@ -295,6 +303,21 @@
    *      —— 不依赖 onclick，因为有的页面任务条只有 .prev_white（没有 onclick）
    *   ③ 2 秒后检查有没有 work 帧，没有就再点一次（并打 warn，不再静默）
    * 千万不要再调站点的 changeDisplayContent：它拼的 URL 带 crossId=undefined，iframe 加载失败。 */
+  /* 2026-11-04：跳过学习检测的兜底 —— 进了测验入口 4 秒后自己切章。
+   * 有的课程卷子 DOM 认不出来（exam 那边既不答疑也不广播），以前就干等在测验页上。
+   * 每章只排一次；exam 先广播的话 clickNext 会被 claim / busy / 冷却去重，不会跳两节。 */
+  function scheduleSkipFallback() {
+    if (!examSkipOn()) return;
+    const key = quizChapterKey();
+    if (!key || st.skipFallbackKey === key) return;
+    st.skipFallbackKey = key;
+    setTimeout(function () {
+      if (st.skipFallbackKey !== key || st.stopped || st.busy) return;
+      CX.info('跳过学习检测：进页面 4 秒了，直接切下一章');
+      clickNext('skip-fallback');
+    }, 4000);
+  }
+
   function clickEntry(el) {
     if (!el) return false;
 
@@ -349,6 +372,7 @@
       } catch (e) {}
     }, 2000);
 
+    scheduleSkipFallback();
     return true;
   }
 
@@ -1242,6 +1266,8 @@
    * 不再是"没有 aria 就当未完成"——上一版就是因为这个把已完成的页当成未完成、永不跳章。 */
   let pendingQuizSince = 0;
   function pendingQuizAnywhere() {
+    /* 2026-11-04：不处理测验 / 跳过模式 → 不存在「在等它打开」这回事 */
+    if (!examEnabled() || examSkipOn()) return false;
     return anyDoc().some(function (d) {
       let items = [];
       try { items = d.querySelectorAll('.prev_white, .prev_list li, .prevItem'); } catch (e) { return false; }
@@ -1532,6 +1558,7 @@
       st.noTargetNoted = false;
       st.stopReason = '';
       st.lastTocLogKey = '';
+      st.skipFallbackKey = '';
       resetTocPlan();
       /* 换章了：上一章答题帧留下的「忙碌」标记必须清掉，否则新章节要被它挡住十几秒
        * （实测第二个测验白等 26 秒才去点入口）。 */

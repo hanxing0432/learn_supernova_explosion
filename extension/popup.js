@@ -89,7 +89,7 @@ function escapeHtml(s) {
   });
 }
 
-/* ---------- 「AI 学习检测」按钮 ----------
+/* ---------- 「学习检测」按钮 ----------
  * 它是**一次性动作**，不是开关（2026-10-28 用户要求）。开关语义留在
  * 高级设置「学习检测 → 启用 AI 答题」。点一下 = 对当前标签页立刻跑一轮：
  * 走 chrome.scripting 打进各帧的扩展隔离世界（与 content script 同一个世界，
@@ -145,7 +145,7 @@ let flashTimer = 0;
 function flash(btn, text, kind) {
   if (!btn) return;
   const lbl = (btn.querySelector && btn.querySelector('.lbl')) || btn;
-  if (!lbl.dataset.label) lbl.dataset.label = lbl.textContent || 'AI 学习检测';
+  if (!lbl.dataset.label) lbl.dataset.label = lbl.textContent || '学习检测';
   lbl.textContent = text;
   if (btn.classList) {
     btn.classList.remove('ok', 'bad');

@@ -199,13 +199,14 @@ async function testUI(extId) {
         samples: CXConfig.DEFAULTS.samples.enabled,
         autoReload: CXConfig.DEFAULTS.dev.autoReload,
         cmdBridge: CXConfig.DEFAULTS.dev.cmdBridge,
-        skipExam: CXConfig.DEFAULTS.exam.skipAnswering,
+        examMode: CXConfig.DEFAULTS.exam.mode,
+        aiOn: CXConfig.DEFAULTS.ai.enabled,
         ver: CXConfig.DEFAULTS.version,
         logLevel: CXConfig.DEFAULTS.ui.logLevel
       })`) || '{}');
       check('调试卡开关默认全关（初次安装）', d.samples === false && d.autoReload === false && d.cmdBridge === false, JSON.stringify(d));
-      check('「跳过学习检测」默认关', d.skipExam === false, 'skipAnswering=' + d.skipExam);
-      check('配置版本 4、日志级别仍 info', d.ver === 4 && d.logLevel === 'info', 'v=' + d.ver + ' lv=' + d.logLevel);
+      check('学习检测默认 AI 优先、AI 总开关默认开', d.examMode === 'ai-first' && d.aiOn === true, JSON.stringify({ mode: d.examMode, ai: d.aiOn }));
+      check('配置版本 5、日志级别仍 info', d.ver === 5 && d.logLevel === 'info', 'v=' + d.ver + ' lv=' + d.logLevel);
     }
     cdp.close();
   }
@@ -777,7 +778,7 @@ async function testSkipExam(swWsUrl) {
   console.log('\n[用例] 跳过学习检测：进测验页但不作答 → 导航切下一章');
   await configure(swWsUrl, {
     player: { autoPlay: false },
-    exam: { skipAnswering: true },
+    exam: { mode: 'skip' },
     nav: { skipEmptyPage: true, nextDelayMs: 300, maxStuckReloads: 1 }
   });
   const t = await newTarget(BASE + '/exam-skip.html?chapterId=1207354213');
@@ -808,7 +809,27 @@ async function testSkipExam(swWsUrl) {
   check('切章没有点「下一节」按钮', !!(report && report.buttonClicks === 0), 'buttonClicks=' + (report && report.buttonClicks));
   check('日志记录了「跳过学习检测」', !!skipLog, skipLog ? skipLog.text : '没有找到相关日志');
   cdp.close();
-  const back = await configure(swWsUrl, { exam: { skipAnswering: false } });
+
+  /* 2026-11-04：关掉「学习检测自动处理」→ 导航连测验入口都不点（以前会点开然后卡住）。
+   * 用 cards-quiz.html：它记录了 quizClicks，正常情况下插件会点它一次。 */
+  await configure(swWsUrl, {
+    player: { autoPlay: false },
+    exam: { enabled: false, mode: 'ai-first' },
+    nav: { skipEmptyPage: true, nextDelayMs: 300, maxStuckReloads: 1 }
+  });
+  const t2 = await newTarget(BASE + '/knowledge/cards-quiz.html');
+  const cdp2 = new CDP(t2.webSocketDebuggerUrl);
+  await cdp2.opened();
+  await cdp2.send('Runtime.enable');
+  let r2 = null;
+  const t1 = Date.now();
+  while (Date.now() - t1 < 12000) {
+    await sleep(600);
+    try { r2 = JSON.parse(await cdp2.eval('document.getElementById("test-report").textContent') || '{}'); } catch (e) { continue; }
+  }
+  check('关掉学习检测后不点测验入口', !!(r2 && r2.quizClicks === 0), 'quizClicks=' + (r2 && r2.quizClicks));
+  cdp2.close();
+  const back = await configure(swWsUrl, { exam: { mode: 'ai-first', enabled: true }, ai: { enabled: true } });
   back.cdp.close();
 }
 
@@ -835,6 +856,19 @@ async function testQText() {
   } catch (e) { r = { err: String(e && e.message) }; }
   check('采集到多道题', !!(r && r.n >= 3), 'n=' + (r && r.n) + (r && r.err ? ' ' + r.err : ''));
   check('题干/选项是明文', !!(r && /我国的根本政治制度/.test(r.stem) && /人民代表大会制度/.test(r.opt)), (r && r.stem) + ' | ' + (r && r.opt));
+
+  /* 2026-11-04：作答方式收敛（AI 关掉 → AI 优先按暴力枚举跑） */
+  let modes = null;
+  try {
+    modes = await cdp.evalIso(`({
+      aiOff: CX.examMode({ ai: { enabled: false }, exam: { mode: 'ai-first' } }),
+      aiOn: CX.examMode({ ai: { enabled: true }, exam: { mode: 'ai-first' } }),
+      skip: CX.examMode({ exam: { mode: 'skip' } }),
+      brute: CX.examMode({ exam: { mode: 'brute' } }),
+      bad: CX.examMode({ exam: { mode: 'zzz' } })
+    })`);
+  } catch (e) { modes = { err: String(e && e.message) }; }
+  check('AI 关掉时「AI 优先」按暴力枚举跑', !!(modes && modes.aiOff === 'brute' && modes.aiOn === 'ai-first' && modes.skip === 'skip' && modes.brute === 'brute' && modes.bad === 'ai-first'), JSON.stringify(modes));
   check('搜索链接按模板生成（去题号/题型/空括号）', !!(r && /^https:\/\/www\.baidu\.com\/s\?wd=/.test(r.url) && r.clean === '我国的根本政治制度是'), (r && r.url) + ' | clean=' + (r && r.clean));
   check('复制文本带序号与题型', !!(r && /^1【单选题】/.test(r.text) && /A、人民代表大会制度/.test(r.text)), String((r && r.text) || '').split('\n')[0]);
 

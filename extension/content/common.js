@@ -107,6 +107,24 @@
 
   CX.reloadConfig();
 
+  /* 2026-11-04：AI 总开关（ai.enabled）。AI 不只服务学习检测，视频弹题也用它 ——
+   * 关掉后 exam / videoquiz 的「AI 优先」都会退回暴力枚举（仍会作答，只是不联网）。 */
+  CX.aiOn = function () {
+    try { return !(CX.cfg && CX.cfg.ai && CX.cfg.ai.enabled === false); } catch (e) { return true; }
+  };
+
+  /* 学习检测的「作答方式」收敛：ai-first | brute | skip。
+   * AI 关掉时 ai-first 等价于 brute；认不出的值回 ai-first。 */
+  CX.examMode = function (cfg) {
+    const c = cfg || CX.cfg || {};
+    const ex = c.exam || {};
+    let m = ex.mode || 'ai-first';
+    if (m !== 'skip' && m !== 'brute' && m !== 'ai-first') m = 'ai-first';
+    const aiOn = !(c.ai && c.ai.enabled === false);
+    if (m === 'ai-first' && !aiOn) return 'brute';
+    return m;
+  };
+
   /* ---------------- 防暂停总开关 → 主世界 ----------------
    * MAIN world 的 antipause-main.js 靠 documentElement 上的 data-cx-keepalive
    * 决定要不要生效，但**这个属性以前全项目没有任何写入点** —— 结果是防暂停

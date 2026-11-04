@@ -46,14 +46,14 @@ let modelCache = [];              /* 「拉取」拿回来的模型，只在本�
 const MASTER_FIELD = {
   path: 'enabled', label: '自动学习总开关', type: 'bool',
   desc: '下面这四项的总闸。关掉后它们各自的值不变，但都不执行。',
-  help: '只管「自动播放 / 弹题作答 / AI 学习检测 / 自动跳章」。防暂停、字体采集、AI 接口不受它控制。'
+  help: '只管「自动播放 / 弹题作答 / 学习检测 / 自动跳章」。防暂停、字体采集、AI 接口不受它控制。'
 };
 
 const GOVERNED_FIELDS = [
   { path: 'player.autoPlay', label: '自动播放', type: 'bool', desc: '进入有未完成视频的页自动开播（音量 0）。' },
   { path: 'nav.autoNext', label: '自动下一节', type: 'bool', desc: '任务点完成后翻页，优先走右侧目录。' },
   { path: 'videoQuiz.enabled', label: '弹题自动答', type: 'bool', desc: '视频中途弹出的题目自动作答。' },
-  { path: 'exam.enabled', label: 'AI 学习检测', type: 'bool', desc: '测验 / 作业页自动答题。弹窗里的同名按钮是「立刻做一次」。' }
+  { path: 'exam.enabled', label: '学习检测自动处理', type: 'bool', desc: '测验 / 作业页按「作答方式」处理；关掉则连入口都不点，直接切下一章。' }
 ];
 
 /* 不受总开关控制的：单独一段，避免又被误当成总开关管的东西 */
@@ -118,12 +118,16 @@ const SECTIONS = [
     ]
   },
   {
-    key: 'exam', title: '学习检测（AI 答题）',
+    key: 'exam', title: '学习检测（章节测验 / 作业）',
     fields: [
       {
         path: 'exam.mode', label: '作答方式', type: 'select',
-        options: [['ai-first', 'AI 优先'], ['brute', '暴力枚举（不调 AI）']],
-        help: '想彻底不做卷子：关掉上面「常用」里的「AI 学习检测」。'
+        options: [
+          ['ai-first', 'AI 优先（失败退回枚举）'],
+          ['brute', '暴力枚举（不调 AI）'],
+          ['skip', '跳过：进页面但不作答']
+        ],
+        help: '「跳过」会点开任务条上的「学习测验」入口，进去就交给导航切下一章 —— 不占用提交次数。「AI 优先」在 AI 总开关关掉时会自动按暴力枚举跑。'
       },
       { path: 'exam.maxRounds', label: '最多提交轮数', type: 'number', min: 1, max: 6, unit: '轮', danger: true, desc: '每次「任务点仍未完成」才重做。', help: '别调大：实测连打 4 轮会把学习页主线程打死。暴力枚举模式下这一项会自动×2。' },
       { path: 'exam.maxAiRounds', label: 'AI 最多常规轮数', type: 'number', min: 1, max: 10, unit: '轮', desc: '超过这么多轮才升级为「联网检索后重答」。' },
@@ -133,17 +137,18 @@ const SECTIONS = [
       { path: 'exam.randomDelayMs', label: '每题操作间隔', type: 'number', min: 0, max: 3000, step: 50, unit: 'ms' },
       { path: 'exam.submitConfirm', label: '自动确认提交弹窗', type: 'bool' },
       { path: 'exam.giveUpToNext', label: '轮数用尽就跳下一章', type: 'bool', desc: '跑满「最多提交轮数」仍没过时，放弃本节测验并让导航切下一章，不再卡死在这一节。关掉则停在原地提示人工处理。' },
-      {
-        path: 'exam.skipAnswering', label: '跳过学习检测（进页面但不作答）', type: 'bool',
-        desc: '仍会点开任务条上的「学习测验」入口，但既不调 AI 也不提交，交给导航直接切下一章。',
-        help: '适合「只想把视频过一遍、卷子留着自己做」：点开入口就走，不占用你的提交次数。'
-      },
       { path: 'exam.allowRealExam', label: '正式考试也自动作答', type: 'bool', danger: true, desc: '默认关闭：只处理学习检测 / 章节测验 / 作业，不碰正式考试。' }
     ]
   },
   {
     key: 'ai', title: 'AI 接口',
+    tip: 'AI 不只服务「学习检测」：视频弹题、错题重答、联网检索都走这里配的接口。关掉总开关后两处都退回暴力枚举（仍会作答，只是不联网）。',
     fields: [
+      {
+        path: 'ai.enabled', label: '启用 AI 作答', type: 'bool',
+        desc: '关掉后不再调用任何 AI 接口：视频弹题与学习检测的「AI 优先」自动按暴力枚举跑，Key 仍然保留。',
+        help: '适合不想联网 / 不想花 token 的场景；要恢复 AI 作答打开即可，不用重填 Key。'
+      },
       {
         path: 'ai.provider', label: '服务商预设', type: 'select',
         options: Object.keys(CFG.PROVIDERS).map(function (k) { return [k, CFG.PROVIDERS[k].label]; }),
@@ -300,7 +305,7 @@ const GATE = {
   play: { path: 'player.autoPlay', label: '自动播放' },
   nav: { path: 'nav.autoNext', label: '自动下一节' },
   quiz: { path: 'videoQuiz.enabled', label: '弹题自动答' },
-  exam: { path: 'exam.enabled', label: 'AI 学习检测' },
+  exam: { path: 'exam.enabled', label: '学习检测' },
   ui: { path: 'ui.hud', label: '页面浮窗' },
   /* 2026-11-03：题目原文/搜索不吃「自动学习总开关」，单独标开关状态 */
   qtext: { path: 'ui.questionCopy', label: '题目原文' }
@@ -314,7 +319,10 @@ function pill(on, text) {
 function gateHTML(key) {
   const g = GATE[key];
   if (!g) {
-    if (key === 'ai' && aiUnconfigured()) return '<span class="state bad">未配置</span>';
+    if (key === 'ai') {
+      if (cfg.ai && cfg.ai.enabled === false) return '<span class="state off">AI 已关</span>';
+      if (aiUnconfigured()) return '<span class="state bad">未配置</span>';
+    }
     return '';
   }
   const masterOn = getPath(cfg, 'enabled') !== false;
@@ -332,7 +340,9 @@ function sectionNote(key) {
   const nv = cfg.nav || {};
   const vq = cfg.videoQuiz || {};
   const ex = cfg.exam || {};
-  const modeName = function (m) { return m === 'brute' ? '暴力枚举' : m === 'off' ? '不处理' : 'AI 优先'; };
+  const modeName = function (m) {
+    return m === 'brute' ? '暴力枚举' : m === 'skip' ? '跳过作答' : m === 'off' ? '不处理' : 'AI 优先';
+  };
   if (key === 'play') return '倍速 ' + esc(String(Number(ka.rate) || 1)) + '×';
   if (key === 'nav') {
     return (nv.tocOnly === false ? '目录优先' : '只走目录') +
@@ -341,11 +351,12 @@ function sectionNote(key) {
   }
   if (key === 'quiz') return '作答 ' + esc(modeName(vq.mode));
   if (key === 'exam') {
-    return '作答 ' + esc(modeName(ex.mode)) + ' · 最多 ' + esc(String(Number(ex.maxRounds) || 3)) + ' 轮' +
-      (ex.skipAnswering === true ? ' · 跳过作答' : '') +
+    return (ex.enabled === false ? '不处理测验页' : '作答 ' + esc(modeName(ex.mode))) +
+      ' · 最多 ' + esc(String(Number(ex.maxRounds) || 3)) + ' 轮' +
       (ex.allowRealExam === true ? ' · 正式考试也答' : '');
   }
   if (key === 'ai') {
+    if (cfg.ai && cfg.ai.enabled === false) return '已关闭（改用暴力枚举）';
     if (aiUnconfigured()) return '答题会失败';
     const p = CFG.PROVIDERS[(cfg.ai || {}).provider] || {};
     return esc(p.label || '自定义') + ' · ' + esc((cfg.ai || {}).model || '未填模型');
