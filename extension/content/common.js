@@ -113,16 +113,31 @@
     try { return !(CX.cfg && CX.cfg.ai && CX.cfg.ai.enabled === false); } catch (e) { return true; }
   };
 
-  /* 学习检测的「作答方式」收敛：ai-first | brute | skip。
-   * AI 关掉时 ai-first 等价于 brute；认不出的值回 ai-first。 */
+  /* 学习检测的「作答方式」收敛：ai-first | brute | skip。认不出的值回 ai-first。
+   * 2026-11-06：**不再因为 ai.enabled=false 静默降级成 brute**。
+   * 用户选了「AI 优先」就该用 AI；AI 没开是配置问题，要明确提示 + 停手，
+   * 而不是偷偷换成枚举（真机教训：设置页显示 AI 优先，日志却在跑枚举，人完全看不出）。 */
   CX.examMode = function (cfg) {
     const c = cfg || CX.cfg || {};
     const ex = c.exam || {};
     let m = ex.mode || 'ai-first';
     if (m !== 'skip' && m !== 'brute' && m !== 'ai-first') m = 'ai-first';
-    const aiOn = !(c.ai && c.ai.enabled === false);
-    if (m === 'ai-first' && !aiOn) return 'brute';
     return m;
+  };
+
+  /* AI 关闭、但「学习检测 / 视频弹题」里选了「AI 优先」—— 配置自相矛盾。
+   * 返回被影响的模块名（空串 = 没冲突），给设置页和运行时提示共用一句话。 */
+  CX.aiModeConflict = function (cfg) {
+    const c = cfg || CX.cfg || {};
+    if (!(c.ai && c.ai.enabled === false)) return '';
+    const ex = c.exam || {};
+    const vq = c.videoQuiz || {};
+    const examAi = ex.enabled !== false && (ex.mode || 'ai-first') === 'ai-first';
+    const quizAi = vq.enabled !== false && (vq.mode || 'ai-first') === 'ai-first';
+    if (examAi && quizAi) return '学习检测与视频弹题';
+    if (examAi) return '学习检测';
+    if (quizAi) return '视频弹题';
+    return '';
   };
 
   /* ---------------- 防暂停总开关 → 主世界 ----------------

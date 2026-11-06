@@ -3,7 +3,7 @@
 > **几乎是目前针对超星学习通最强的一体化插件。**
 > 不是「能点下一节」的小脚本，而是一整套把课程跑完的自动化：视频不暂停、弹题自动答、测验按任务点判过、章节按目录标记智能跳转，连被站点加密的题目字体都能还原成可复制的明文。
 
-`v1.5.3` · GPL-3.0 · 114 项本地断言 · 20945 字字形字典 · Edge / Chrome 111+
+`v1.5.4` · GPL-3.0 · 115 项本地断言 · 20945 字字形字典 · Edge / Chrome 111+
 
 ## 为什么说它强
 
@@ -17,7 +17,7 @@
 | **学习检测** | 要么全自动交卷，要么完全不管 | 可以设「进页面但不作答」，卷子留给你自己做 |
 | **换窗口就暂停** | 大多脚本到后台就断 | 主世界伪造可见性 + 音量 0 + 无音轨镜像，切标签页照跑 |
 
-> 表里每条都对应仓库里的端到端断言（`node tools/run-test.mjs all` = **114 项**），数字不是拍脑袋写的。
+> 表里每条都对应仓库里的端到端断言（`node tools/run-test.mjs all` = **115 项**），数字不是拍脑袋写的。
 
 一句话：一个跑在 `*.chaoxing.com` 上的原生 MV3 扩展 —— 装完点一下，剩下的它自己跑；你想接手时，它连题目明文都给你准备好了。
 
@@ -306,7 +306,7 @@ node tools/run-test.mjs all
 node tools/run-test.mjs ui|hud|antipause|exam|exam-li|video-quiz|nav|quiz-entry|guard|done|review|toc|toc-child|toc-locked|toc-done|toc-yellow0|toc-none|skip-exam|qtext|empty|empty-optin|empty-guard|font|retry|giveup|end|scope|shell
 ```
 
-当前状态：`all` = **114 项断言全过**。
+当前状态：`all` = **115 项断言全过**。
 
 | 场景 | 覆盖什么 |
 |---|---|
@@ -454,7 +454,7 @@ docs/images/              README 用图
 
 ## 版本
 
-当前 `1.5.2`。改动见 [CHANGELOG.md](CHANGELOG.md)。
+当前 `1.5.4`。改动见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 

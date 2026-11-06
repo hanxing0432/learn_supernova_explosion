@@ -22,12 +22,18 @@
 
   function cfg() { return CX.cfg.videoQuiz || {}; }
 
-  /* 2026-11-04：AI 总开关关掉时，「AI 优先」退回暴力枚举（视频弹题同样受 AI 开关管） */
+  /* 2026-11-06：AI 总开关关掉时不再改走枚举 —— 选了「AI 优先」就按 AI 走，
+   * 真没开就由调用方提示并停手（见 ensureAiOrWarn()）。 */
   function effMode() {
     const m = cfg().mode || 'ai-first';
     if (m === 'off') return 'off';
     if (m === 'brute') return 'brute';
-    return (CX.aiOn && !CX.aiOn()) ? 'brute' : 'ai-first';
+    return 'ai-first';
+  }
+
+  /* AI 关着却选了「AI 优先」：本页不作答（提示集中在设置页，运行时不刷日志） */
+  function aiReady() {
+    return !(CX.cfg.ai && CX.cfg.ai.enabled === false);
   }
 
   function combos(n) {
@@ -124,6 +130,8 @@
 
     const mode = effMode();
     if (mode === 'off') return;
+    /* AI 关着却选了 AI 优先：直接不作答，不偷偷用枚举顶替 */
+    if (mode === 'ai-first' && !aiReady()) return;
 
     st.busy = true;
     try {

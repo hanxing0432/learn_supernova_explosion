@@ -906,8 +906,11 @@
       CX.info('本节测验已放弃 → 直接切下一章');
     }
 
-    /* 任务点完成后优先去「学习测验」（不再直接点下一节） */
-    if (taskDone && !examGaveUpHere() && !quizEntryCooldown()) {
+    /* 任务点完成后优先去「学习测验」（不再直接点下一节）。
+     * 2026-11-06：`reason !== 'exam-giveup'` 是硬闸 —— examGaveUpHere() 依赖
+     * currentChapterId()，顶层读不到章节 id 时会假阴性，那样就会又点进测验入口，
+     * 形成「12 轮 → 放弃 → 又进去 → 又 12 轮」的闭环，比原来更糟。 */
+    if (taskDone && reason !== 'exam-giveup' && !examGaveUpHere() && !quizEntryCooldown()) {
       const quizEntry = findQuizTaskEntry();
       if (quizEntry) {
         const claim = await send({ kind: 'nav', action: 'claim', reason: 'quiz-entry', done: true });
@@ -1105,6 +1108,30 @@
         if (!CX.isTop) { CX.debug('收到「跳过学习检测」信号（本帧不负责跳转）'); return; }
         CX.info('收到「跳过学习检测」信号，准备切下一章');
         setTimeout(function () { clickNext('exam-skipped'); }, 1500);
+      } else if (msg.kind === 'exam_giveup_bc') {
+        /* 2026-11-06：答满轮数放弃本节 —— 纯测验章节没有"视频播完/测验通过"这类
+         * 切章触发，必须由这条信号把 clickNext 叫起来，否则整页停死。
+         * 重试 3 次是因为 st.busy / st.stopped 可能在信号到达时正好为真（那会静默 return），
+         * 而消息只发一次；每次重试前确认章节没变，避免连点跳过头。 */
+        if (!CX.isTop) { CX.debug('收到「测验放弃」信号（本帧不负责跳转）'); return; }
+        let tries = 0;
+        const startCid = currentChapterId();
+        const tick = function () {
+          if (!CX.cfg.enabled || navCfg().autoNext === false) return;
+          if (startCid && currentChapterId() && currentChapterId() !== startCid) {
+            CX.info('章节已切换（' + startCid + ' → ' + currentChapterId() + '），放弃信号不再重试');
+            return;
+          }
+          if (examGaveUpHere() && st.stopped) {
+            st.stopped = false;
+            st.stoppedAt = 0;
+            CX.info('本章测验已放弃，清掉跳转冷却，直接切下一章');
+          }
+          clickNext('exam-giveup');
+          if (++tries < 3) setTimeout(tick, 6000);
+        };
+        CX.info('收到「本节测验已放弃」信号，准备切下一章');
+        setTimeout(tick, 1500);
       }
     });
   } catch (e) {}

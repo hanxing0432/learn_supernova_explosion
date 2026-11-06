@@ -107,7 +107,7 @@ const SECTIONS = [
     fields: [
       {
         path: 'videoQuiz.mode', label: '作答方式', type: 'select',
-        options: [['ai-first', 'AI 优先（失败自动暴力兜底）'], ['brute', '纯暴力枚举（不调用 AI）'], ['off', '不处理']]
+        options: [['ai-first', 'AI 优先'], ['brute', '暴力枚举（不调用 AI）'], ['off', '不处理']]
       },
       { path: 'videoQuiz.autoContinue', label: '答对后点「继续学习」', type: 'bool', desc: '并自动恢复视频播放。' },
       { path: 'videoQuiz.maxAiRounds', label: 'AI 最多重问次数', type: 'number', min: 1, max: 10, unit: '次' },
@@ -123,11 +123,11 @@ const SECTIONS = [
       {
         path: 'exam.mode', label: '作答方式', type: 'select',
         options: [
-          ['ai-first', 'AI 优先（失败退回枚举）'],
+          ['ai-first', 'AI 优先'],
           ['brute', '暴力枚举（不调 AI）'],
           ['skip', '跳过：进页面但不作答']
         ],
-        help: '「跳过」会点开任务条上的「学习测验」入口，进去就交给导航切下一章 —— 不占用提交次数。「AI 优先」在 AI 总开关关掉时会自动按暴力枚举跑。'
+        help: '「跳过」会点开任务条上的「学习测验」入口，进去就交给导航切下一章 —— 不占用提交次数。'
       },
       { path: 'exam.maxRounds', label: '最多提交轮数', type: 'number', min: 1, max: 6, unit: '轮', danger: true, desc: '每次「任务点仍未完成」才重做。', help: '别调大：实测连打 4 轮会把学习页主线程打死。暴力枚举模式下这一项会自动×2。' },
       { path: 'exam.maxAiRounds', label: 'AI 最多常规轮数', type: 'number', min: 1, max: 10, unit: '轮', desc: '超过这么多轮才升级为「联网检索后重答」。' },
@@ -142,7 +142,7 @@ const SECTIONS = [
   },
   {
     key: 'ai', title: 'AI 接口',
-    tip: 'AI 不只服务「学习检测」：视频弹题、错题重答、联网检索都走这里配的接口。关掉总开关后两处都退回暴力枚举（仍会作答，只是不联网）。',
+    tip: 'AI 不只服务「学习检测」：视频弹题、错题重答、联网检索都走这里配的接口。',
     fields: [
       {
         path: 'ai.enabled', label: '启用 AI 作答', type: 'bool',
@@ -273,6 +273,14 @@ function fieldHTML(f, uid) {
     if (f.placeholder) attrs.push('placeholder="' + esc(f.placeholder) + '"');
     ctl = '<input ' + attrs.join(' ') + '>';
   }
+  /* 2026-11-06：AI 关着却选了「AI 优先」—— 提示就贴在这个下拉框正下方，
+   * 挂在页面顶部没人看得见（用户原话）。改「作答方式」或 AI 总开关时会重绘。 */
+  let warn = '';
+  if ((f.path === 'exam.mode' || f.path === 'videoQuiz.mode') && String(val) === 'ai-first' &&
+      cfg.ai && cfg.ai.enabled === false) {
+    warn = '<div class="desc" style="color:#fbbf24;margin-top:6px">' +
+      '⚠ AI 总开关是关的，这一项现在不会作答。去「AI 接口」打开「启用 AI 作答」，或把这里改成「暴力枚举」。</div>';
+  }
   const hay = [f.label, f.desc || '', f.help || '', f.path, f.unit || ''].join(' ').toLowerCase();
   const cls = 'field' + (f.danger ? ' danger' : '') + (f.type === 'textarea' ? ' col' : '');
   return '<div class="' + cls + '" data-f="' + esc(hay) + '">' +
@@ -281,7 +289,7 @@ function fieldHTML(f, uid) {
     (f.unit ? '<span class="unit">' + esc(f.unit) + '</span>' : '') +
     (f.help ? '<span class="qh" title="' + esc(f.help) + '">?</span>' : '') +
     '</label>' + (f.desc ? '<div class="desc">' + esc(f.desc) + '</div>' : '') + '</div>' +
-    '<div class="ctl">' + ctl + '</div></div>';
+    '<div class="ctl">' + ctl + warn + '</div></div>';
 }
 
 const OPEN_KEY = 'cxOptOpen';
@@ -349,11 +357,17 @@ function sectionNote(key) {
       (nv.skipLockedToc === false ? '' : ' · 未解锁往后找') +
       ' · 空页' + (nv.advanceWhenNoTask === false ? '停' : '跳过');
   }
-  if (key === 'quiz') return '作答 ' + esc(modeName(vq.mode));
+  if (key === 'quiz') {
+    return '作答 ' + esc(modeName(vq.mode)) +
+      (cfg.ai && cfg.ai.enabled === false && vq.enabled !== false && (vq.mode || 'ai-first') === 'ai-first'
+        ? ' · ⚠ AI 未开启' : '');
+  }
   if (key === 'exam') {
     return (ex.enabled === false ? '不处理测验页' : '作答 ' + esc(modeName(ex.mode))) +
       ' · 最多 ' + esc(String(Number(ex.maxRounds) || 3)) + ' 轮' +
-      (ex.allowRealExam === true ? ' · 正式考试也答' : '');
+      (ex.allowRealExam === true ? ' · 正式考试也答' : '') +
+      (cfg.ai && cfg.ai.enabled === false && ex.enabled !== false && (ex.mode || 'ai-first') === 'ai-first'
+        ? ' · ⚠ AI 未开启' : '');
   }
   if (key === 'ai') {
     if (cfg.ai && cfg.ai.enabled === false) return '已关闭（改用暴力枚举）';
@@ -562,6 +576,8 @@ document.addEventListener('change', function (e) {
   autoSave([path, v]);
   syncUI();
   if (path === 'ui.debugMode') { render(); return; }
+  /* 改了「作答方式」或 AI 总开关 → 立刻重绘，让下拉框下面那句「AI 关着不会作答」跟着出现/消失 */
+  if (path === 'ai.enabled' || path === 'exam.mode' || path === 'videoQuiz.mode') { render(); return; }
 });
 
 /* 分区展开状态记忆（searching 时不记） */

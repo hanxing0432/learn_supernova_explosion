@@ -755,13 +755,24 @@
     return out;
   }
 
-  /* 枚举模式：每题都取一个没试过的答案 */
+  /* 枚举模式：每题都取一个没试过的答案。
+   * 2026-11-06：候选为空时不再静默回退第一个选项 —— 那会让 12 轮全交同一份卷子，
+   * 日志却写着"换了一个没试过的答案"。现在区分「组合试完了（从头轮）」和
+   * 「选项根本没解析出来（只能盲填）」，后者会 warn 出来。 */
   function bruteAnswers(qs) {
     const out = {};
+    const noCand = [];
     qs.forEach(function (q, i) {
       const c = nextUnusedCombo(q, i);
-      out[i] = c || [q0(q)];
+      if (c && c.length) { out[i] = c; return; }
+      const all = allCombos(q);
+      if (all && all.length) { out[i] = all[0]; return; }
+      out[i] = [q0(q)];
+      noCand.push(i + 1);
     });
+    if (noCand.length) {
+      CX.warn('暴力枚举：第 ' + noCand.join('、') + ' 题拿不到候选组合（选项没解析出来），只能盲填第一个选项');
+    }
     return out;
   }
 
@@ -1237,6 +1248,20 @@
     /* 轮数上限：暴力枚举每轮只试一个候选（单选 4 选项就要 4 轮），
      * 用 maxRounds 原值等于永远试不完；这里给它翻倍（默认 3 → 6 轮）。 */
     const bruteMode = mode() === 'brute';
+
+    /* 2026-11-06：错题集合连续 3 轮一字不差 = 换答案根本没生效，再跑也是白烧配额。
+     * 真机案例：12 轮错题恒为「1、2」，每轮都填 A —— 这条能提前 9 轮停手。 */
+    if (st.history.length >= 3) {
+      const s3 = st.history.slice(-3).map(function (h) {
+        return Array.isArray(h.wrongIndexes) ? h.wrongIndexes.join(',') : null;
+      });
+      if (s3[0] && s3[0] === s3[1] && s3[1] === s3[2]) {
+        st.finished = true;
+        CX.warn('连续 3 轮错题完全相同（第 ' + s3[0] + ' 题）→ 换答案没生效，停止重试');
+        CX.status('⚠ 连续 3 轮错题不变，已停手', { busy: false, phase: 'exam' });
+        return;
+      }
+    }
     /* 枚举模式跟 AI 无关：不配 API Key 也能跑。这里明确打一次日志，
      * 免得看到"没配 Key"的提示就以为坏了（或配了 Key 却以为它在用 AI）。 */
     if (bruteMode && !st.bruteNoted) {
@@ -1275,9 +1300,15 @@
 
     st.busy = true;
     try {
-      /* 没配 Key 时不要瞎猜着交卷，直接停手等用户配置（AI 总开关关掉时走 brute，不会到这里） */
+      /* 没配 Key 时不要瞎猜着交卷，直接停手等用户配置。
+       * 2026-11-06：AI 总开关关掉时以前会静默降级成 brute（设置页显示 AI 优先、实际跑枚举），
+       * 现在直接停手 —— 提示只在设置页给（「AI 关了却选 AI 优先」会标黄），运行时不刷日志。 */
       if (mode() === 'ai-first') {
         const ai = CX.cfg.ai || {};
+        if (ai.enabled === false) {
+          st.finished = true;
+          return;
+        }
         const hasKey = !!ai.apiKey || /127\.0\.0\.1|localhost/.test(ai.baseUrl || '');
         if (!hasKey) {
           st.finished = true;
@@ -1322,7 +1353,12 @@
 
       const aiRounds = Number(cfg().maxAiRounds || 3);
       let answers = {};
-      let needAsk = !partial;
+      /* 2026-11-06：brute 模式必须自己走一遍（见下面的 brute 专用块）。
+       * 以前这里是 `!partial`，而 partial=true（上一轮判过错题）时：
+       *   ② 确定性试探被 `!bruteMode` 挡掉、③ 要求 !partial、④ 要求 needAsk —— 三处全跳过，
+       *   结果 answers 是空的，fillAnswers 一题都不填，每轮提交的都是页面上残留的上一轮答案。
+       * 真机日志：12 轮全是「我的答案：A」，错题恒定 1、2。 */
+      let needAsk = bruteMode ? true : !partial;
 
       /* ① 上一轮判过分、但没有要改的题（全对却没过）→ 原样重交，别让 AI 再掷一次 */
       if (canReuse && !retryIdx.length && !bruteMode) {
@@ -1370,6 +1406,25 @@
         CX.info('本轮只改 ' + retryIdx.length + ' 题（判错 ' + prevWrongIdx.length + ' / 半对 ' + prevHalfIdx.length +
           '；确定性试探 ' + det + '，问 AI ' + askIdx.length + '）' + (dbg.length ? ' [' + dbg.join(' ') + ']' : ''));
         needAsk = askIdx.length > 0;
+      }
+
+      /* ②' 暴力枚举：**只换判错的题，答对的沿用**（用户要的语义：错了就换、对了不动）。
+       * 以前 bruteAnswers 对全部题取新组合，修好 needAsk 后会把已经答对的判断题也换掉；
+       * 这里显式区分，避免"修好一个 bug 又造一个新的"。 */
+      if (bruteMode) {
+        const retrySet = {};
+        retryIdx.forEach(function (i) { retrySet[i] = 1; });
+        const b = bruteAnswers(qs);
+        let kept = 0, changed = 0;
+        qs.forEach(function (q, i) {
+          const prev = prevAnswers && prevAnswers[i];
+          const keepPrev = !retrySet[i] && st.round > 1 && prev && prev.length;
+          if (keepPrev) { answers[i] = prev.slice(); kept++; return; }
+          if (b[i] && b[i].length) { answers[i] = b[i]; changed++; }
+        });
+        needAsk = false;
+        CX.info('暴力枚举：本轮换 ' + changed + ' 题，沿用 ' + kept + ' 题' +
+          (st.round > 1 && !retryIdx.length ? '（上一轮没有判错题，全部沿用）' : ''));
       }
 
       /* ③ 联网检索：只在"整卷重问"时才用（试探能推进就不浪费检索） */

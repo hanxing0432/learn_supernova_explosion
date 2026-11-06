@@ -426,6 +426,14 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return;
   }
 
+  /* 2026-11-06：跑满轮数放弃本节试卷时也必须有出路。
+   * 以前只发了 exam:giveup，这里没有转发、nav 也没监听 ——
+   * 纯测验章节（没有视频、没有"测验通过"信号）就永远没有切章触发，整页停死。 */
+  if (msg.kind === 'exam:giveup') {
+    broadcast(tabId, { kind: 'exam_giveup_bc', url: msg.url, chapter: msg.chapter });
+    return;
+  }
+
   /* 2026-10-30：顶层能看到任务条、答题帧经常看不到（跨域 iframe）。
    * 由顶层判定「学习测验任务点已完成」后广播给同标签页所有帧。 */
   if (msg.kind === 'quiz:taskDone') {

@@ -857,7 +857,9 @@ async function testQText() {
   check('采集到多道题', !!(r && r.n >= 3), 'n=' + (r && r.n) + (r && r.err ? ' ' + r.err : ''));
   check('题干/选项是明文', !!(r && /我国的根本政治制度/.test(r.stem) && /人民代表大会制度/.test(r.opt)), (r && r.stem) + ' | ' + (r && r.opt));
 
-  /* 2026-11-04：作答方式收敛（AI 关掉 → AI 优先按暴力枚举跑） */
+  /* 2026-11-06：作答方式**不再**因 AI 总开关关闭而静默降级成 brute
+   * （用户要求：选了「AI 优先」就该用 AI；AI 没开要提示/停手，不能偷偷换行为）。
+   * 顺带校验 CX.aiModeConflict() 能把"AI 关了却选 AI 优先"这种矛盾报出来。 */
   let modes = null;
   try {
     modes = await cdp.evalIso(`({
@@ -865,10 +867,14 @@ async function testQText() {
       aiOn: CX.examMode({ ai: { enabled: true }, exam: { mode: 'ai-first' } }),
       skip: CX.examMode({ exam: { mode: 'skip' } }),
       brute: CX.examMode({ exam: { mode: 'brute' } }),
-      bad: CX.examMode({ exam: { mode: 'zzz' } })
+      bad: CX.examMode({ exam: { mode: 'zzz' } }),
+      conflictExam: CX.aiModeConflict({ ai: { enabled: false }, exam: { mode: 'ai-first' }, videoQuiz: { mode: 'brute' } }),
+      conflictBoth: CX.aiModeConflict({ ai: { enabled: false }, exam: { mode: 'ai-first' }, videoQuiz: { mode: 'ai-first' } }),
+      conflictNone: CX.aiModeConflict({ ai: { enabled: true }, exam: { mode: 'ai-first' }, videoQuiz: { mode: 'ai-first' } })
     })`);
   } catch (e) { modes = { err: String(e && e.message) }; }
-  check('AI 关掉时「AI 优先」按暴力枚举跑', !!(modes && modes.aiOff === 'brute' && modes.aiOn === 'ai-first' && modes.skip === 'skip' && modes.brute === 'brute' && modes.bad === 'ai-first'), JSON.stringify(modes));
+  check('AI 关掉时「AI 优先」不再静默降级', !!(modes && modes.aiOff === 'ai-first' && modes.aiOn === 'ai-first' && modes.skip === 'skip' && modes.brute === 'brute' && modes.bad === 'ai-first'), JSON.stringify(modes));
+  check('「AI 关了却选 AI 优先」会被识别成配置冲突', !!(modes && modes.conflictExam === '学习检测' && modes.conflictBoth === '学习检测与视频弹题' && modes.conflictNone === ''), JSON.stringify(modes));
   check('搜索链接按模板生成（去题号/题型/空括号）', !!(r && /^https:\/\/www\.baidu\.com\/s\?wd=/.test(r.url) && r.clean === '我国的根本政治制度是'), (r && r.url) + ' | clean=' + (r && r.clean));
   check('复制文本带序号与题型', !!(r && /^1【单选题】/.test(r.text) && /A、人民代表大会制度/.test(r.text)), String((r && r.text) || '').split('\n')[0]);
 
