@@ -72,12 +72,13 @@
    * 页面响应头下发的 CSP 没有 'unsafe-inline'，内联 onclick 与 javascript: URL 都被
    * 浏览器拒绝，隔离世界派发的合成点击因此永远无效（实测：点了页面毫无反应）。
    * 这条通道让隔离世界把「必须由页面自己执行」的动作交给主世界代劳。
-   * 事件同步派发，返回值挂在 ev.__cxOut 上。 */
+   * 事件同步派发，通过 DOM 属性返回结果。 */
   try {
     root.addEventListener('cx-main-call', function (ev) {
-      var d = (ev && ev.detail) || {};
       var out = { ok: false, err: '' };
       try {
+        var detail = ev && ev.detail;
+        var d = (typeof detail === 'string' ? JSON.parse(detail) : detail) || {};
         /* 逐层钻进最内层的 work iframe（答题页通常嵌 3 层） */
         var doc = root.document;
         var guard = 0;

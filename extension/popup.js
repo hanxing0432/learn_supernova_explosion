@@ -38,7 +38,7 @@ function paint() {
 
   /* 状态副行：一眼看出「防暂停开没开、AI 配没配」 */
   const ai = cfg.ai || {};
-  const aiOk = !!ai.apiKey || /127\.0\.0\.1|localhost/.test(String(ai.baseUrl || ''));
+  const aiOk = !!CFG.aiEndpoint(ai.baseUrl) && !CFG.aiNeedsKey(ai);
   const ka = cfg.keepAlive || {};
   const prov = CFG.PROVIDERS[ai.provider] || {};
   const meta = $('meta');
@@ -112,15 +112,16 @@ function kickExam() {
       target: { tabId: tab.id, allFrames: true },
       func: function () {
         try {
-          if (!window.CX || !CX.exam || typeof CX.exam.run !== 'function') return { ok: false, why: 'nocx' };
-          if (!CX.cfg || !CX.cfg.enabled) return { ok: false, why: 'master-off' };
-          if (CX.cfg.exam && CX.cfg.exam.enabled === false) return { ok: false, why: 'exam-off' };
-          const s = CX.exam.state || {};
+          const cx = globalThis.CX;
+          if (!cx || !cx.exam || typeof cx.exam.run !== 'function') return { ok: false, why: 'nocx' };
+          if (!cx.cfg || !cx.cfg.enabled) return { ok: false, why: 'master-off' };
+          if (cx.cfg.exam && cx.cfg.exam.enabled === false) return { ok: false, why: 'exam-off' };
+          const s = cx.exam.state || {};
           if (s.busy) return { ok: false, why: 'busy' };
           if (s.redoing) return { ok: false, why: 'redoing' };
-          if (!CX.exam.isExamContext()) return { ok: false, why: 'notexam' };
+          if (!cx.exam.isExamContext()) return { ok: false, why: 'notexam' };
           s.finished = false;          /* 之前跑完过，手动踢要能再跑 */
-          CX.exam.run();
+          cx.exam.run();
           return { ok: true };
         } catch (e) { return { ok: false, why: 'err:' + ((e && e.message) || e) }; }
       }

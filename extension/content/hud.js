@@ -42,6 +42,9 @@
   .body { padding: 8px 10px 10px; }
   .status { display:flex; gap:6px; align-items:flex-start; margin-bottom:6px; }
   .status .txt { flex:1; word-break: break-all; color:#dbeafe; }
+  .ai-key-notice { padding: 6px 10px; color:#fde68a; background:rgba(245,158,11,.14); }
+  .ai-key-notice button { all:unset; cursor:pointer; text-decoration:underline; margin-left:6px; }
+  .ai-key-notice button:focus-visible { outline:1px solid currentColor; outline-offset:2px; }
   .row { display:flex; gap:6px; margin-bottom:6px; flex-wrap: wrap; }
   .row button {
     all: unset; cursor:pointer; padding: 4px 9px; border-radius: 7px;
@@ -94,6 +97,9 @@
           <button data-act="toggle" id="btnToggle">暂停</button>
           <button data-act="collapse" id="btnCollapse">－</button>
           <button data-act="closeHud" id="btnClose" title="关闭浮窗（等同设置里关掉「页面浮窗」）">×</button>
+        </div>
+        <div class="ai-key-notice" id="aiKeyNotice" role="status" hidden>
+          AI 答题缺少 API Key<button type="button" data-act="options">去设置</button>
         </div>
         <div class="body">
           <div class="status"><span class="txt" id="statusText">待启动</span></div>
@@ -292,6 +298,12 @@
     /* 2026-11-03：「题目原文」按钮跟设置里的开关联动（设置页改完立即生效） */
     const btnQ = shadow.getElementById('btnQText');
     if (btnQ) btnQ.style.display = (CX.cfg.ui && CX.cfg.ui.questionCopy === false) ? 'none' : '';
+    const exam = CX.cfg.exam || {};
+    const quiz = CX.cfg.videoQuiz || {};
+    const examUsesAi = exam.enabled !== false && CX.examMode() === 'ai-first';
+    const quizUsesAi = quiz.enabled && quiz.mode !== 'brute' && quiz.mode !== 'off';
+    shadow.getElementById('aiKeyNotice').hidden =
+      !(CX.aiOn() && (examUsesAi || quizUsesAi) && root.CXConfig.aiNeedsKey(CX.cfg.ai || {}));
     shadow.getElementById('statusText').textContent = state.text;
     const box = shadow.getElementById('logs');
     const tail = logLines.slice(-LOG_MAX).reverse();

@@ -17,6 +17,7 @@
     questions: [],
     started: false,
     finished: false,
+    waitingForAi: '',
     skipped: false,     /* 2026-11-03：按设置跳过学习检测（进页面但没作答） */
     bruteNoted: false,
     lastSubmitAt: 0,
@@ -1249,19 +1250,15 @@
      * 用 maxRounds 原值等于永远试不完；这里给它翻倍（默认 3 → 6 轮）。 */
     const bruteMode = mode() === 'brute';
 
-    /* 2026-11-06：错题集合连续 3 轮一字不差 = 换答案根本没生效，再跑也是白烧配额。
-     * 真机案例：12 轮错题恒为「1、2」，每轮都填 A —— 这条能提前 9 轮停手。 */
-    if (st.history.length >= 3) {
-      const s3 = st.history.slice(-3).map(function (h) {
-        return Array.isArray(h.wrongIndexes) ? h.wrongIndexes.join(',') : null;
-      });
-      if (s3[0] && s3[0] === s3[1] && s3[1] === s3[2]) {
-        st.finished = true;
-        CX.warn('连续 3 轮错题完全相同（第 ' + s3[0] + ' 题）→ 换答案没生效，停止重试');
-        CX.status('⚠ 连续 3 轮错题不变，已停手', { busy: false, phase: 'exam' });
-        return;
-      }
-    }
+    const recent = st.history.slice(-3).map(function (entry) {
+      if (!entry || entry.pending || !Array.isArray(entry.wrongIndexes) || !entry.wrongIndexes.length || !entry.answers) return null;
+      if (entry.wrongIndexes.some(function (i) { return !Array.isArray(entry.answers[i]) || !entry.answers[i].length; })) return null;
+      const wrong = entry.wrongIndexes.slice().sort();
+      const half = Array.isArray(entry.halfIndexes) ? entry.halfIndexes.slice().sort() : [];
+      const answers = Object.keys(entry.answers).sort().map(function (i) { return [i, entry.answers[i]]; });
+      return JSON.stringify([wrong, half, answers]);
+    });
+    const repeated = recent.length === 3 && recent[0] && recent[0] === recent[1] && recent[0] === recent[2];
     /* 枚举模式跟 AI 无关：不配 API Key 也能跑。这里明确打一次日志，
      * 免得看到"没配 Key"的提示就以为坏了（或配了 Key 却以为它在用 AI）。 */
     if (bruteMode && !st.bruteNoted) {
@@ -1271,15 +1268,16 @@
     const roundCap = bruteMode
       ? Math.max(Number(cfg().maxRounds || 3) * 2, 4)
       : Number(cfg().maxRounds || 10);
-    if (st.round >= roundCap) {
-      CX.warn('已达到最大作答轮数（' + roundCap + '），停止');
+    if (st.round >= roundCap || repeated) {
+      const reason = repeated ? '连续 3 轮提交相同答案且错题未变' : '已达到最大作答轮数（' + roundCap + '）';
+      CX.warn(reason + '，停止重试');
       st.finished = true;
       /* 2026-10-31：默认放弃本节 → 交给导航切下一章，别死卡在这一节（设置里可关） */
       if (cfg().giveUpToNext !== false) {
         st.gaveUp = true;
         const cid = topChapterId();
         try { if (cid) root.top.__cxExamGiveUpChapter = cid; } catch (e) {}
-        CX.info('已放弃本节测验（' + roundCap + ' 轮未通过）→ 让导航切下一章' + (cid ? '，chapterId=' + cid : ''));
+        CX.info('已放弃本节测验（' + reason + '）→ 让导航切下一章' + (cid ? '，chapterId=' + cid : ''));
         CX.status('⚠ 本节测验未通过，按设置跳过', { busy: false, phase: 'exam' });
         /* 2026-10-31：把"放弃的章节"落盘，刷新后导航才知道不用再等这一章的测验入口 */
         try {
@@ -1293,30 +1291,30 @@
         } catch (e) {}
         try { chrome.runtime.sendMessage({ kind: 'exam:giveup', url: location.href, chapter: cid }); } catch (e) {}
       } else {
-        CX.status('测验未通过（已达最大轮数），请人工检查', { busy: false, phase: 'exam' });
+        CX.status('测验未通过（' + reason + '），请人工检查', { busy: false, phase: 'exam' });
       }
       return;
     }
 
+    const ai = CX.cfg.ai || {};
+    let blocked = '';
+    if (!bruteMode) {
+      if (ai.enabled === false) blocked = 'off';
+      else if (!root.CXConfig.aiEndpoint(ai.baseUrl)) blocked = 'address';
+      else if (root.CXConfig.aiNeedsKey(ai)) blocked = 'key';
+    }
+    if (blocked !== st.waitingForAi) {
+      st.waitingForAi = blocked;
+      if (blocked === 'key' || blocked === 'address') {
+        const problem = blocked === 'key' ? '未配置 AI Key' : 'AI 接口地址无效';
+        CX.warn(problem + '，等待更新设置');
+        CX.status('⚠ ' + problem + '，等待更新设置', { busy: false, phase: 'exam' });
+      }
+    }
+    if (blocked) return;
+
     st.busy = true;
     try {
-      /* 没配 Key 时不要瞎猜着交卷，直接停手等用户配置。
-       * 2026-11-06：AI 总开关关掉时以前会静默降级成 brute（设置页显示 AI 优先、实际跑枚举），
-       * 现在直接停手 —— 提示只在设置页给（「AI 关了却选 AI 优先」会标黄），运行时不刷日志。 */
-      if (mode() === 'ai-first') {
-        const ai = CX.cfg.ai || {};
-        if (ai.enabled === false) {
-          st.finished = true;
-          return;
-        }
-        const hasKey = !!ai.apiKey || /127\.0\.0\.1|localhost/.test(ai.baseUrl || '');
-        if (!hasKey) {
-          st.finished = true;
-          CX.warn('未配置 AI Key，已跳过自动作答（请点扩展图标填写 API Key）');
-          CX.status('⚠ 未配置 AI Key，未自动作答', { busy: false, phase: 'exam' });
-          return;
-        }
-      }
       /* 题目文字可能被超星字体加密（.font-cxsecret），解析前先把映射建好 */
       if (CX.fontDecrypt && CX.fontDecrypt.ensure) {
         try { await CX.fontDecrypt.ensure(); } catch (e) {}

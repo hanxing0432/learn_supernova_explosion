@@ -21,6 +21,18 @@ function setPath(obj, path, val) {
   }
   o[ks[ks.length - 1]] = val;
 }
+
+function setConfigValue(target, path, value) {
+  if (path === 'ai.baseUrl' && CFG.aiEndpoint(target.ai.baseUrl) !== CFG.aiEndpoint(value)) {
+    target.ai.apiKey = '';
+    target.ai.extraHeaders = '';
+  }
+  setPath(target, path, value);
+}
+
+function isAiCredential(path) {
+  return path === 'ai.apiKey' || path === 'ai.extraHeaders';
+}
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
@@ -146,7 +158,7 @@ const SECTIONS = [
     fields: [
       {
         path: 'ai.enabled', label: '启用 AI 作答', type: 'bool',
-        desc: '关掉后不再调用任何 AI 接口：视频弹题与学习检测的「AI 优先」自动按暴力枚举跑，Key 仍然保留。',
+        desc: '关闭后，选了「AI 优先」的视频弹题和学习检测会等待 AI 重新开启。Key 会保留。',
         help: '适合不想联网 / 不想花 token 的场景；要恢复 AI 作答打开即可，不用重填 Key。'
       },
       {
@@ -154,7 +166,7 @@ const SECTIONS = [
         options: Object.keys(CFG.PROVIDERS).map(function (k) { return [k, CFG.PROVIDERS[k].label]; }),
         desc: '选中即自动填 Base URL / 模型 / JSON 模式。'
       },
-      { path: 'ai.baseUrl', label: 'Base URL', type: 'text', desc: 'OpenAI 兼容接口，如 https://api.deepseek.com/v1' },
+      { path: 'ai.baseUrl', label: 'Base URL', type: 'text', desc: 'OpenAI 兼容接口，如 https://api.deepseek.com/v1。更换地址会清空原 Key 和额外请求头。' },
       { path: 'ai.apiKey', label: 'API Key', type: 'password', desc: '只存本机浏览器；127.0.0.1 / localhost 可留空。' },
       {
         path: 'ai.model', label: '模型名', type: 'combo', pull: true,
@@ -214,12 +226,12 @@ const DEBUG_FIELDS = [
   },
   { path: 'samples.enabled', label: '字体样本采集器', type: 'bool', desc: '进未提交的测验页自动抓加密字体、算字形指纹并入库。', help: '给字体破解 / 加字典用；交卷后页面是明文，采不到。' },
   { path: 'dev.autoReload', label: '改代码后自动重载扩展', type: 'bool', danger: true, desc: '每 8 秒扫一遍源码，变了就重载扩展 —— 会打断正在跑的答题 / 提交。' },
-  { path: 'dev.cmdBridge', label: '本地命令桥', type: 'bool', danger: true, desc: '每 1.2 秒向下面的地址取一次命令（配合 tools/_cmd-bridge.mjs）。相当于本机后门。' },
+  { path: 'dev.cmdBridge', label: '本地命令桥', type: 'bool', danger: true, desc: '向本机调试服务取命令，需要填写地址和本次启动生成的令牌。' },
   {
     path: 'dev.cmdBridgeUrl', label: '命令桥地址', type: 'text', placeholder: '留空就不轮询',
-    desc: '留空＝完全不轮询（默认就是空）。只填你自己的调试服务地址，别填别人的。',
-    help: '只接受 http/https。开关打开但地址空着时不会联网，日志里会提示一次。示例地址见使用说明，这里不预填。'
-  }
+    desc: '仅接受本机地址，例如 http://127.0.0.1:8765。'
+  },
+  { path: 'dev.cmdBridgeToken', label: '命令桥令牌', type: 'password', desc: '从命令桥启动窗口复制。配置备份不会包含这个值。' }
 ];
 
 /* ---------------- 渲染 ---------------- */
@@ -283,7 +295,8 @@ function fieldHTML(f, uid) {
   }
   const hay = [f.label, f.desc || '', f.help || '', f.path, f.unit || ''].join(' ').toLowerCase();
   const cls = 'field' + (f.danger ? ' danger' : '') + (f.type === 'textarea' ? ' col' : '');
-  return '<div class="' + cls + '" data-f="' + esc(hay) + '">' +
+  const endpoint = isAiCredential(f.path) ? ' data-ai-endpoint="' + esc(CFG.aiEndpoint(cfg.ai.baseUrl)) + '"' : '';
+  return '<div class="' + cls + '" data-f="' + esc(hay) + '"' + endpoint + '>' +
     '<div class="lab"><label for="' + id + '">' + esc(f.label) +
     (f.badge ? '<span class="pill">' + esc(f.badge) + '</span>' : '') +
     (f.unit ? '<span class="unit">' + esc(f.unit) + '</span>' : '') +
@@ -304,7 +317,7 @@ function saveOpen(set) {
 
 function aiUnconfigured() {
   const ai = cfg.ai || {};
-  return !ai.apiKey && !/127\.0\.0\.1|localhost/.test(String(ai.baseUrl || ''));
+  return CFG.aiNeedsKey(ai);
 }
 
 /* 「常用」里哪个开关管着这张卡 —— 卡片标题旁就标它现在开还是关；
@@ -529,13 +542,21 @@ document.addEventListener('change', function (e) {
 
   const path = el.getAttribute('data-path');
   if (!path) return;
+  if (isAiCredential(path)) {
+    const field = el.closest('[data-ai-endpoint]');
+    if (field && field.getAttribute('data-ai-endpoint') !== CFG.aiEndpoint(cfg.ai.baseUrl)) {
+      render();
+      setHint('AI 接口地址已更改，请重新填写凭据', true);
+      return;
+    }
+  }
   const type = el.getAttribute('data-type');
   let v;
   if (type === 'bool') v = el.checked;
   else if (type === 'number') v = el.value === '' ? 0 : Number(el.value);
   else v = el.value;
 
-  setPath(cfg, path, v);
+  setConfigValue(cfg, path, v);
 
   /* 手填模型名之后把下拉回正：命中预设就切到预设（并收起输入框），否则停在「自定义…」 */
   if (el.getAttribute('data-combo-inp') && el.closest) {
@@ -554,22 +575,14 @@ document.addEventListener('change', function (e) {
   if (path === 'ai.provider') { applyProvider(v); return; }
 
   /* 命令桥：地址空就不轮询，格式错也不轮询 —— 这两种都要当场说清楚，不能只写「已保存」 */
-  if (path === 'dev.cmdBridgeUrl' || path === 'dev.cmdBridge') {
+  if (path === 'dev.cmdBridgeUrl' || path === 'dev.cmdBridgeToken' || path === 'dev.cmdBridge') {
     autoSave([path, v], true);
     syncUI();
-    const url = String((cfg.dev || {}).cmdBridgeUrl || '').trim();
-    if (path === 'dev.cmdBridgeUrl' && url && !/^https?:\/\//i.test(url)) {
-      setHint('命令桥地址必须以 http:// 或 https:// 开头，否则后台不会轮询', true);
-    } else if (path === 'dev.cmdBridge' && v === true && !url) {
-      setHint('命令桥已打开，但地址还空着 —— 填一个地址才会真正轮询（示例地址见使用说明）', true);
-      try {
-        const inp = document.querySelector('[data-path="dev.cmdBridgeUrl"]');
-        if (inp) inp.focus();
-      } catch (e) {}
-    } else {
-      /* 不在这里回显地址本身：设置页没必要再把你的地址抄一遍 */
-      setHint(url ? '命令桥地址已保存（开关打开时才轮询）' : '命令桥：地址为空，不轮询', !url);
-    }
+    const dev = cfg.dev;
+    if (dev.cmdBridgeUrl && !CFG.bridgeEndpoint(dev.cmdBridgeUrl)) setHint('命令桥地址必须指向本机', true);
+    else if (dev.cmdBridge && !CFG.bridgeEndpoint(dev.cmdBridgeUrl)) setHint('请填写本机命令桥地址', true);
+    else if (dev.cmdBridge && !CFG.validBridgeToken(dev.cmdBridgeToken)) setHint('请填写启动窗口生成的命令桥令牌', true);
+    else setHint('命令桥设置已保存');
     return;
   }
 
@@ -577,7 +590,7 @@ document.addEventListener('change', function (e) {
   syncUI();
   if (path === 'ui.debugMode') { render(); return; }
   /* 改了「作答方式」或 AI 总开关 → 立刻重绘，让下拉框下面那句「AI 关着不会作答」跟着出现/消失 */
-  if (path === 'ai.enabled' || path === 'exam.mode' || path === 'videoQuiz.mode') { render(); return; }
+  if (path === 'ai.enabled' || path === 'ai.baseUrl' || path === 'exam.mode' || path === 'videoQuiz.mode') { render(); return; }
 });
 
 /* 分区展开状态记忆（searching 时不记） */
@@ -594,25 +607,30 @@ document.addEventListener('toggle', function (e) {
 function applyProvider(key) {
   const p = CFG.PROVIDERS[key];
   if (!p) return;
-  if (p.baseUrl) setPath(cfg, 'ai.baseUrl', p.baseUrl);
+  const ops = [['ai.provider', key], ['ai.jsonMode', !!p.jsonMode]];
+  if (p.baseUrl) {
+    setConfigValue(cfg, 'ai.baseUrl', p.baseUrl);
+    ops.push(['ai.baseUrl', p.baseUrl]);
+  }
   if (p.model) setPath(cfg, 'ai.model', p.model);
+  if (p.model) ops.push(['ai.model', p.model]);
   setPath(cfg, 'ai.jsonMode', !!p.jsonMode);
   modelCache = [];                 /* 换服务商了，上一家拉回来的模型清掉 */
   render();
-  autoSave([['ai.baseUrl', cfg.ai.baseUrl], ['ai.model', cfg.ai.model], ['ai.jsonMode', cfg.ai.jsonMode]], true);
+  autoSave(ops, true);
 }
 
 /* 「拉取」：直接问当前接口 GET {baseUrl}/models。用的是扩展页自己的 host 权限，
  * 不经过 background，也不新增消息通道。失败就提示手填。 */
 function pullModels(btn) {
   const ai = cfg.ai || {};
-  const base = String(ai.baseUrl || '').replace(/\/+$/, '');
+  const base = CFG.aiEndpoint(ai.baseUrl);
   if (!base) { setHint('先填 Base URL 再拉取', true); return; }
   if (btn) { btn.disabled = true; btn.textContent = '拉取中…'; }
   setHint('正在向 ' + base + '/models 请求模型列表…');
   const headers = {};
   if (ai.apiKey) headers.Authorization = 'Bearer ' + ai.apiKey;
-  fetch(base + '/models', { headers: headers })
+  fetch(base + '/models', { headers: headers, redirect: 'error' })
     .then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
@@ -656,18 +674,16 @@ document.addEventListener('click', function (e) {
 let saveChain = Promise.resolve();
 let lastWritten = '';     /* 自己刚写的那份，用于在 onChanged 里跳过自我触发的重绘 */
 function savePatch(mutator) {
-  saveChain = saveChain.then(function () {
-    return new Promise(function (resolve) {
-      chrome.storage.local.get(['cxConfig'], function (res) {
-        const cur = CFG.normalize(res && res.cxConfig);
-        try { mutator(cur); } catch (e) {}
-        const next = CFG.normalize(cur);
-        lastWritten = JSON.stringify(next);
-        chrome.storage.local.set({ cxConfig: next }, function () { resolve(); });
-      });
-    });
-  }).catch(function () {});
-  return saveChain;
+  const write = saveChain.then(async function () {
+    const res = await chrome.storage.local.get(['cxConfig']);
+    const cur = CFG.normalize(res && res.cxConfig);
+    const next = CFG.normalize(mutator(cur) || cur);
+    lastWritten = JSON.stringify(next);
+    await chrome.storage.local.set({ cxConfig: next });
+    return next;
+  });
+  saveChain = write.catch(function () {});
+  return write;
 }
 
 let saveTimer = 0;
@@ -675,21 +691,27 @@ let pendingOps = [];
 /* ops 可以是 [path, value]，也可以是 [[path,value], …] */
 function autoSave(ops, silent) {
   if (ops) {
-    (Array.isArray(ops[0]) ? ops : [ops]).forEach(function (op) { pendingOps.push(op); });
+    (Array.isArray(ops[0]) ? ops : [ops]).forEach(function (op) {
+      const path = op[0];
+      const boundEndpoint = isAiCredential(path) ? CFG.aiEndpoint(cfg.ai.baseUrl) : null;
+      pendingOps.push([path, op[1], boundEndpoint]);
+    });
   }
   clearTimeout(saveTimer);
   saveTimer = setTimeout(function () {
     const list = pendingOps;
     pendingOps = [];
     savePatch(function (cur) {
-      list.forEach(function (op) { setPath(cur, op[0], op[1]); });
+      list.forEach(function (op) {
+        if (op[2] === null || op[2] === CFG.aiEndpoint(cur.ai.baseUrl)) setConfigValue(cur, op[0], op[1]);
+      });
     }).then(function () {
       if (silent) return;
       $('saveHint').textContent = '已保存 ' + new Date().toTimeString().slice(0, 8);
       setTimeout(function () {
         if ($('saveHint').textContent.indexOf('已保存') === 0) $('saveHint').textContent = '';
       }, 2200);
-    });
+    }).catch(function () { setHint('设置保存失败', true); });
   }, 300);
 }
 
@@ -709,7 +731,7 @@ $('btn-save').addEventListener('click', function () {
   }).then(function () {
     $('saveHint').textContent = '设置已保存，页面自动生效（无需刷新）';
     setTimeout(function () { $('saveHint').textContent = ''; }, 3000);
-  });
+  }).catch(function () { setHint('设置保存失败', true); });
 });
 
 $('btn-test').addEventListener('click', function () {
@@ -717,7 +739,7 @@ $('btn-test').addEventListener('click', function () {
   const ai = CFG.normalize(cfg).ai;
   savePatch(function (cur) {
     cur.ai = CFG.merge(cur.ai || {}, {
-      baseUrl: ai.baseUrl, apiKey: ai.apiKey, model: ai.model, jsonMode: ai.jsonMode
+      baseUrl: ai.baseUrl, apiKey: ai.apiKey, extraHeaders: ai.extraHeaders, model: ai.model, jsonMode: ai.jsonMode
     });
   }).then(function () {
     $('saveHint').textContent = '正在测试 AI 连接…';
@@ -726,22 +748,29 @@ $('btn-test').addEventListener('click', function () {
       if (res && res.ok) $('saveHint').textContent = '连接正常，模型 ' + (res.model || ai.model) + '，耗时 ' + (res.ms || 0) + 'ms';
       else $('saveHint').textContent = '连接失败：' + ((res && res.error) || '未知错误');
     });
-  });
+  }).catch(function () { setHint('AI 设置保存失败', true); });
 });
 
 /* 数据与备份 */
-$('btn-default').addEventListener('click', function () {
+$('btn-default').addEventListener('click', async function () {
   if (!confirm('恢复默认会把所有设置（包括 API Key）重置，确定？')) return;
-  cfg = CFG.normalize(null);
-  chrome.storage.local.set({ cxConfig: cfg }, function () { render(); $('saveHint').textContent = '已恢复默认设置'; });
+  clearTimeout(saveTimer);
+  pendingOps = [];
+  try {
+    cfg = await savePatch(function () { return CFG.normalize(null); });
+    render();
+    setHint('已恢复默认设置');
+  } catch (e) { setHint('恢复默认设置失败', true); }
 });
 
 $('btn-export').addEventListener('click', function () {
   cfg = CFG.normalize(cfg);
-  /* 2026-10-31：导出前把 API Key 脱敏。以前原样导出，贴到 issue / 群里就直接漏 Key。
-   * 导入时见到 "***" 会保留本机原来的 Key（见导入处理）。 */
   const dump = CFG.clone(cfg);
-  if (dump.ai && dump.ai.apiKey) dump.ai.apiKey = '***';
+  delete dump.ai.apiKey;
+  delete dump.ai.extraHeaders;
+  delete dump.dev.cmdBridgeToken;
+  dump.ai.baseUrl = CFG.aiEndpoint(dump.ai.baseUrl);
+  dump.dev.cmdBridgeUrl = CFG.bridgeEndpoint(dump.dev.cmdBridgeUrl);
   const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -754,24 +783,40 @@ $('file-import').addEventListener('change', function (e) {
   const f = e.target.files[0];
   if (!f) return;
   const r = new FileReader();
-  r.onload = function () {
+  r.onload = async function () {
+    let imported;
     try {
       const obj = JSON.parse(r.result);
-      /* 导出的配置里 Key 是 "***"：保留本机原来的 Key，不要被占位符覆盖 */
-      if (obj && obj.ai && obj.ai.apiKey === '***') {
-        const keep = (cfg && cfg.ai && cfg.ai.apiKey) || '';
-        obj.ai.apiKey = keep;
-      }
-      cfg = CFG.normalize(obj);
-      chrome.storage.local.set({ cxConfig: cfg }, function () { render(); $('saveHint').textContent = '已导入配置'; });
-    } catch (err) { $('saveHint').textContent = '导入失败：JSON 解析错误'; }
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('配置必须是 JSON 对象');
+      imported = CFG.normalize(obj);
+    } catch (err) { setHint('导入失败：配置格式无效', true); return; }
+
+    clearTimeout(saveTimer);
+    pendingOps = [];
+    try {
+      cfg = await savePatch(function (cur) {
+        const endpoint = CFG.aiEndpoint(imported.ai.baseUrl);
+        const sameEndpoint = endpoint && endpoint === CFG.aiEndpoint(cur.ai.baseUrl);
+        imported.ai.apiKey = sameEndpoint ? cur.ai.apiKey : '';
+        imported.ai.extraHeaders = sameEndpoint ? cur.ai.extraHeaders : '';
+        imported.dev.cmdBridge = false;
+        imported.dev.cmdBridgeToken = '';
+        return imported;
+      });
+      render();
+      setHint('已导入配置');
+    } catch (err) { setHint('导入失败：无法保存设置', true); }
   };
   r.readAsText(f);
 });
 
-$('btn-clearbank').addEventListener('click', function () {
+$('btn-clearbank').addEventListener('click', async function () {
   if (!confirm('清空「同题干答对后缓存」的答案？不影响配置和字体样本。')) return;
-  chrome.storage.local.remove(['cxAnswerBank'], function () { $('saveHint').textContent = '已清空答案缓存'; });
+  try {
+    const result = await chrome.runtime.sendMessage({ kind: 'ai', action: 'clearBank' });
+    if (!result || !result.ok) throw new Error('清空失败');
+    setHint('已清空答案缓存');
+  } catch (e) { setHint('清空答案缓存失败，请重试', true); }
 });
 
 /* 日志（在「调试」里） */

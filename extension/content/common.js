@@ -7,16 +7,18 @@
 
   const CX = root.CX = root.CX || {};
   const CFG = root.CXConfig;
+  const pageWindow = typeof window === 'undefined' ? root : window;
 
   /* ---------------- 运行环境 ---------------- */
   CX.isTop = (function () {
-    try { return root.top === root; } catch (e) { return false; }
+    /* Firefox content scripts have a sandbox global distinct from the DOM window. */
+    try { return pageWindow.top === pageWindow; } catch (e) { return false; }
   })();
 
   /* 找到最外层可访问的同源父窗口（学习通多层 iframe，跳转逻辑只在能操作顶层的那一层执行） */
   CX.walkAccessibleParents = function () {
-    const list = [root];
-    let w = root;
+    const list = [pageWindow];
+    let w = pageWindow;
     while (true) {
       try {
         if (w.parent && w.parent !== w && w.parent.document) {
@@ -30,7 +32,7 @@
 
   CX.frameDepth = (function () {
     let d = 0;
-    let w = root;
+    let w = pageWindow;
     while (true) {
       try {
         if (w.parent && w.parent !== w) { w = w.parent; d++; } else break;
@@ -107,8 +109,7 @@
 
   CX.reloadConfig();
 
-  /* 2026-11-04：AI 总开关（ai.enabled）。AI 不只服务学习检测，视频弹题也用它 ——
-   * 关掉后 exam / videoquiz 的「AI 优先」都会退回暴力枚举（仍会作答，只是不联网）。 */
+  /* AI 总开关同时控制学习检测与视频弹题的 AI 作答。 */
   CX.aiOn = function () {
     try { return !(CX.cfg && CX.cfg.ai && CX.cfg.ai.enabled === false); } catch (e) { return true; }
   };
@@ -507,7 +508,8 @@
           if (Object.prototype.hasOwnProperty.call(extra, k)) detail[k] = extra[k];
         }
       }
-      root.dispatchEvent(new CustomEvent('cx-main-call', { detail: detail }));
+      /* Firefox shares strings across the page and extension realms. */
+      root.dispatchEvent(new CustomEvent('cx-main-call', { detail: JSON.stringify(detail) }));
 
       /* 结果从 DOM 属性读回（事件对象的自定义属性跨世界不可见） */
       let out = null;

@@ -84,7 +84,8 @@
       cmdBridge: false,       // 本地命令桥轮询总开关（默认关）
       /* 命令桥地址。默认空 = 完全不轮询；要本机调试自己填，例如 http://127.0.0.1:8765
        * 2026-10-30：以前写死在 background.js 里，发布包会带上这个端口，改成可配置。 */
-      cmdBridgeUrl: ''
+      cmdBridgeUrl: '',
+      cmdBridgeToken: ''
     },
     /* 章节跳转 */
     nav: {
@@ -179,6 +180,7 @@
     const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
     if (!isPlainObject(patch)) return out;
     Object.keys(patch).forEach(function (k) {
+      if (k === '__proto__') return;
       const pv = patch[k];
       if (isPlainObject(pv) && isPlainObject(out[k])) out[k] = merge(out[k], pv);
       else if (pv !== undefined) out[k] = pv;
@@ -186,13 +188,47 @@
     return out;
   }
 
+  function httpUrl(value) {
+    try {
+      const url = new URL(String(value || '').trim());
+      if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) return null;
+      return url;
+    } catch (e) { return null; }
+  }
+
+  function aiEndpoint(value) {
+    const url = httpUrl(value);
+    return url ? url.origin + url.pathname.replace(/\/+$/, '') : '';
+  }
+
+  function aiNeedsKey(ai) {
+    if (typeof ai.apiKey === 'string' && ai.apiKey.trim()) return false;
+    const url = httpUrl(ai.baseUrl);
+    return !url || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+  }
+
+  function bridgeEndpoint(value) {
+    const url = httpUrl(value);
+    if (!url || !['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/') return '';
+    url.hostname = '127.0.0.1';
+    return url.origin;
+  }
+
+  function validBridgeToken(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(value);
+  }
+
   const api = {
     PROVIDERS: PROVIDERS,
     DEFAULTS: DEFAULTS,
     merge: merge,
+    aiEndpoint: aiEndpoint,
+    aiNeedsKey: aiNeedsKey,
+    bridgeEndpoint: bridgeEndpoint,
+    validBridgeToken: validBridgeToken,
     clone: function (v) { return JSON.parse(JSON.stringify(v)); },
     normalize: function (saved) {
-      const out = merge(DEFAULTS, saved || {});
+      const out = merge(api.clone(DEFAULTS), saved || {});
       /* v1 → v2 迁移：把「还停在旧默认值」的轮次降下来。
        * 实测连打 4 轮提交就会把学习页主线程打死（站点混淆脚本 _0x12c153 无限递归），
        * 而且提交次数越多越容易撞上站点的配额与验证码。
@@ -239,6 +275,8 @@
       /* 收敛作答方式：认不出的值一律回 ai-first */
       if (!out.exam || typeof out.exam !== 'object') out.exam = {};
       if (['ai-first', 'brute', 'skip'].indexOf(out.exam.mode) < 0) out.exam.mode = 'ai-first';
+      if (!isPlainObject(out.ai)) out.ai = merge(DEFAULTS.ai);
+      if (!isPlainObject(out.dev)) out.dev = merge(DEFAULTS.dev);
       return out;
     }
   };

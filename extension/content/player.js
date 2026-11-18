@@ -114,10 +114,11 @@
         (v.webkitAudioDecodedByteCount || 0) > 0 ||
         (v.mozHasAudio === true);
       if (hasAudio) return;
-      if (typeof v.captureStream !== 'function') return;
+      const captureStream = v.captureStream || v.mozCaptureStream;
+      if (typeof captureStream !== 'function') return;
       if (v.readyState < 2) return;
+      const stream = captureStream.call(v);
       v.__cxMirror = true;
-      const stream = v.captureStream();
       const mirror = doc.createElement('video');
       mirror.dataset.cxMirror = '1';
       mirror.muted = true;

@@ -1550,9 +1550,7 @@
      * （满屏「点击权被占用」），有的帧刚说"先别切"另一个帧已经切走，
      * 甚至因为各帧算出的"当前章节"不同而跳回上一章（2.1.3 → 2.1.2）。
      * 顶层用 anyDoc() 能遍历全部同源子帧，信息最全，所以只留它一个决策者。 */
-    let isTopPage = false;
-    try { isTopPage = (root === root.top); } catch (e) { isTopPage = CX.isTop; }
-    if (!isTopPage) return;
+    if (!CX.isTop) return;
     if (/^about:blank/i.test(location.href) || !location.href || location.href === 'about:blank') return;
 
     /* 冷却到点就无条件恢复，否则一旦 stopped 就再也没有"新信号"能唤醒它 */

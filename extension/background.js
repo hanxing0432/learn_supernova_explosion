@@ -1,7 +1,10 @@
 /* 后台服务：AI 请求代理、日志/状态广播、跳转仲裁、答案缓存 */
 'use strict';
 
-importScripts('shared/config.js', 'shared/glyphdict.js');
+/* Firefox loads these before this file in its event page. */
+if (typeof importScripts === 'function') {
+  importScripts('shared/config.js', 'shared/glyphdict.js');
+}
 
 const CFG = self.CXConfig;
 const LOG_MAX = 400;
@@ -9,6 +12,7 @@ const BANK_MAX = 3000;
 
 let logs = [];
 let bank = null;              // { key: answer }
+let bankQueue = Promise.resolve();
 const lastClaim = {};         // `${tabId}:${action}` -> ts
 const lastStatusByTab = {};   // tabId -> {text,busy,ts}
 const tabVideo = {};          // tabId -> {state, ts}  视频正在播放时禁止跳下一节
@@ -70,16 +74,13 @@ async function devWatch() {
 
 /* 开关缓存：两个开发通道都默认关，改设置后 10~15 秒内自动生效 */
 let devWatchOn = false;
-let cmdBridgeOn = false;
 
 async function refreshDevSwitches() {
   try {
     const cfg = await getConfig();
     devWatchOn = !!(cfg && cfg.dev && cfg.dev.autoReload === true);
-    cmdBridgeOn = !!(cfg && cfg.dev && cfg.dev.cmdBridge === true);
   } catch (e) {
     devWatchOn = false;
-    cmdBridgeOn = false;
   }
 }
 refreshDevSwitches();
@@ -234,21 +235,30 @@ function broadcast(tabId, msg) {
 }
 
 /* ---------------- 答案库 ---------------- */
-async function loadBank() {
-  if (bank) return bank;
-  const res = await chrome.storage.local.get(['cxAnswerBank']);
-  bank = res.cxAnswerBank || {};
-  return bank;
-}
+function accessBank(action, payload) {
+  const operation = bankQueue.then(async function () {
+    if (action === 'clearBank') {
+      await chrome.storage.local.remove('cxAnswerBank');
+      bank = null;
+      return { ok: true };
+    }
+    if (!payload || typeof payload.key !== 'string' || !payload.key) return { ok: false, error: '无效的缓存键' };
+    if (!bank) {
+      const res = await chrome.storage.local.get(['cxAnswerBank']);
+      bank = Object.assign(Object.create(null), res.cxAnswerBank);
+    }
+    if (action === 'recall') return { answer: bank[payload.key] || null };
 
-async function saveBank() {
-  const keys = Object.keys(bank || {});
-  if (keys.length > BANK_MAX) {
-    const trimmed = {};
-    keys.slice(-BANK_MAX).forEach(function (k) { trimmed[k] = bank[k]; });
-    bank = trimmed;
-  }
-  await chrome.storage.local.set({ cxAnswerBank: bank });
+    const next = Object.assign(Object.create(null), bank);
+    next[payload.key] = { answer: payload.answer, ts: Date.now() };
+    const keys = Object.keys(next);
+    keys.slice(0, Math.max(0, keys.length - BANK_MAX)).forEach(function (key) { delete next[key]; });
+    await chrome.storage.local.set({ cxAnswerBank: next });
+    bank = next;
+    return { ok: true };
+  });
+  bankQueue = operation.catch(function () {});
+  return operation;
 }
 
 /* ---------------- 提示词 ---------------- */
@@ -315,12 +325,13 @@ function extractJson(text) {
 async function callAI(task, payload) {
   const cfg = await getConfig();
   const ai = cfg.ai;
-  if (!ai.apiKey && !/127\.0\.0\.1|localhost/.test(ai.baseUrl || '')) {
+  if (task !== 'ping' && ai.enabled === false) return { ok: false, error: 'AI 作答已关闭' };
+  const base = CFG.aiEndpoint(ai.baseUrl);
+  if (!base) return { ok: false, error: '请填写有效的 AI 接口地址 Base URL' };
+  if (CFG.aiNeedsKey(ai)) {
     return { ok: false, error: '未配置 API Key，请打开插件「高级设置」填写' };
   }
-  if (!ai.baseUrl) return { ok: false, error: '未配置接口地址 Base URL' };
-
-  const url = ai.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+  const url = base + '/chat/completions';
   const headers = { 'Content-Type': 'application/json' };
   if (ai.apiKey) headers['Authorization'] = 'Bearer ' + ai.apiKey;
   String(ai.extraHeaders || '').split(/\n+/).forEach(function (line) {
@@ -345,9 +356,9 @@ async function callAI(task, payload) {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(body),
+      redirect: 'error',
       signal: ctrl.signal
     });
-    clearTimeout(timer);
     const text = await resp.text();
     if (!resp.ok) {
       return { ok: false, error: 'HTTP ' + resp.status + ' ' + text.slice(0, 300), ms: Date.now() - t0 };
@@ -359,9 +370,10 @@ async function callAI(task, payload) {
     if (!answer) return { ok: false, error: 'AI 输出无法解析：' + String(content || '').slice(0, 200), raw: content };
     return { ok: true, answer: answer, raw: content, ms: Date.now() - t0, model: data.model };
   } catch (e) {
-    clearTimeout(timer);
     const msg = e && e.name === 'AbortError' ? '请求超时' : String(e && e.message || e);
     return { ok: false, error: msg };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -612,18 +624,14 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           });
         }
         sendResponse(res);
-      } else if (msg.action === 'remember') {
-        const b = await loadBank();
-        b[msg.payload.key] = { answer: msg.payload.answer, ts: Date.now() };
-        await saveBank();
-        sendResponse({ ok: true });
-      } else if (msg.action === 'recall') {
-        const b = await loadBank();
-        sendResponse({ answer: b[msg.payload.key] || null });
+      } else if (['remember', 'recall', 'clearBank'].includes(msg.action)) {
+        sendResponse(await accessBank(msg.action, msg.payload));
       } else {
         sendResponse({ ok: false, error: '未知 action' });
       }
-    })();
+    })().catch(function (e) {
+      sendResponse({ ok: false, error: String((e && e.message) || e) });
+    });
     return true;
   }
 
@@ -737,39 +745,53 @@ chrome.runtime.onConnect.addListener(function () {});
  *   q      题干/选项的解码结果（前 3 题）
  *   raw    .font-cxsecret 元素的原文与解码后文本
  */
-/* 命令桥地址改成可配置（2026-10-30）：
- *   dev.cmdBridgeUrl 为空 = 完全不轮询（默认就是空，发布包不带任何本机地址）
- *   只接受 http/https；末尾斜杠自动去掉
- *   旧版这里写死 http://127.0.0.1:8765，等于把本机端口固化进发布版 */
-function cmdBridgeBase(cfg) {
-  const raw = String((cfg && cfg.dev && cfg.dev.cmdBridgeUrl) || '').trim();
-  if (!raw) return '';
-  if (!/^https?:\/\//i.test(raw)) return '';
-  return raw.replace(/\/+$/, '');
+function bridgeConnection(cfg) {
+  const dev = cfg.dev;
+  if (dev.cmdBridge !== true || !CFG.validBridgeToken(dev.cmdBridgeToken)) return null;
+  const base = CFG.bridgeEndpoint(dev.cmdBridgeUrl);
+  return base ? { base: base, token: dev.cmdBridgeToken } : null;
 }
 
-let cmdBridgeBaseUrl = '';        /* 本轮 tick 用的地址，cmdPost 回结果时复用 */
-let cmdBridgeNoUrlWarned = false;
-
-async function cmdPost(id, payload) {
-  if (!cmdBridgeBaseUrl) return;
+function isLearningUrl(value) {
   try {
-    await fetch(cmdBridgeBaseUrl + '/result', { method: 'POST', body: JSON.stringify({ id: id, payload: payload }) });
-  } catch (e) {}
+    const url = new URL(value);
+    return /^https?:$/.test(url.protocol) &&
+      (url.hostname === 'chaoxing.com' || url.hostname.endsWith('.chaoxing.com'));
+  } catch (e) { return false; }
 }
 
-async function cmdBridgeTick(base) {
-  let _id = null;
-  if (!base) return;
+async function cmdBridgeTick(connection) {
+  const opts = {
+    headers: { Authorization: 'Bearer ' + connection.token },
+    redirect: 'error',
+    cache: 'no-store'
+  };
+  async function isCurrent() {
+    const current = bridgeConnection(await getConfig());
+    return current && current.base === connection.base && current.token === connection.token;
+  }
+  async function cmdPost(id, payload) {
+    try {
+      if (!await isCurrent()) return;
+      await fetch(connection.base + '/result', {
+        ...opts,
+        method: 'POST',
+        body: JSON.stringify({ id: id, payload: payload }),
+        signal: AbortSignal.timeout(8000)
+      });
+    } catch (e) {}
+  }
+
+  let commandId = null;
   try {
-    const r = await fetch(base + '/poll', { cache: 'no-store' });
+    const r = await fetch(connection.base + '/poll', { ...opts, signal: AbortSignal.timeout(5000) });
     if (!r.ok) return;
     const j = await r.json();
-    if (!j || !j.id) return;
-    _id = j.id;
+    if (!j || !j.id || !await isCurrent()) return;
+    commandId = j.id;
 
-    const allTabs = await chrome.tabs.query({});
-    const tabs = allTabs.filter(function (t) { return /chaoxing\.com/.test(t.url || ''); });
+    const tabs = (await chrome.tabs.query({})).filter(function (tab) { return isLearningUrl(tab.url); });
+    if (!await isCurrent()) return;
 
     /* 只读：把后台日志环回传（2026-10-30 加回，仅 dev.cmdBridge 打开时可用，
      * 不执行任何页面代码，等价于看插件自己的日志窗口） */
@@ -830,7 +852,7 @@ async function cmdBridgeTick(base) {
         target: { tabId: (tabs.filter(function (t) { return /doHomeWorkNew|work\//.test(t.url || ''); })[0] || tabs[0]).id, allFrames: false },
         func: function () {
           try {
-            var CX = window.CX, fd = CX && CX.fontDecrypt;
+            var CX = globalThis.CX, fd = CX && CX.fontDecrypt;
             if (!fd) return { ok: false, why: 'no fontdecrypt' };
             var els = document.querySelectorAll('.font-cxsecret');
             var seen = {}, chars = [];
@@ -864,6 +886,7 @@ async function cmdBridgeTick(base) {
     }
     if (j.cmd === 'open') {
       try {
+        if (!isLearningUrl(j.arg)) throw new Error('命令桥只打开学习通页面');
         const nt = await chrome.tabs.create({ url: j.arg, active: true });
         await cmdPost(j.id, { ok: true, id: nt.id, url: nt.pendingUrl || nt.url });
       } catch (e) {
@@ -874,20 +897,20 @@ async function cmdBridgeTick(base) {
     if (j.cmd === 'tabs') {
       await cmdPost(j.id, {
         ok: true,
-        tabs: allTabs.filter(function (t) { return !/^(edge|chrome|devtools):/.test(t.url || ''); }).map(function (t) {
+        tabs: tabs.map(function (t) {
           return { id: t.id, title: (t.title || '').slice(0, 60), url: (t.url || '').slice(0, 160), active: !!t.active };
         })
       });
       return;
     }
-    const tab = (j.tabId && tabs.find(function (t) { return t.id === j.tabId; })) || tabs[0];
-    if (!tab) { await cmdPost(j.id, { ok: false, error: '没有 chaoxing 标签页' }); return; }
+    const tab = j.tabId == null ? tabs[0] : tabs.find(function (t) { return t.id === j.tabId; });
+    if (!tab) { await cmdPost(j.id, { ok: false, error: '没有匹配的学习通标签页' }); return; }
 
     const res = await chrome.scripting.executeScript({
       target: { tabId: tab.id, allFrames: true },
       func: function (cmd, arg) {
         try {
-          var CX = window.CX;
+          var CX = globalThis.CX;
           if (!CX) return { ok: false, skip: true, why: 'no CX（本 frame 没跑内容脚本）' };
           if (cmd === 'stats') {
             return {
@@ -951,31 +974,34 @@ async function cmdBridgeTick(base) {
       frames: res.map(function (x) { return { frameId: x.frameId, r: x.result }; })
     });
   } catch (e) {
-    if (_id) await cmdPost(_id, { ok: false, error: 'bridge tick failed: ' + String((e && e.message) || e) });
+    if (commandId) await cmdPost(commandId, { ok: false, error: 'bridge tick failed: ' + String((e && e.message) || e) });
   }
 }
 
-/* 本地命令桥轮询：每次现读配置（不依赖内存缓存 —— SW 一被回收，缓存变量就变回 false，
- * 命令桥会静默失效，表现就是 /run 一直超时）。 */
-setInterval(function () {
-  getConfig().then(function (c) {
-    if (!c || !c.dev || c.dev.cmdBridge !== true) { cmdBridgeBaseUrl = ''; return; }
-    const base = cmdBridgeBase(c);
-    if (!base) {
-      cmdBridgeBaseUrl = '';
-      /* 开关开着但地址空着：不联网，只提示一次，免得被当成「开了却没反应」 */
-      if (!cmdBridgeNoUrlWarned) {
-        cmdBridgeNoUrlWarned = true;
-        logs.push({ level: 'warn', text: '命令桥已开但没填地址（dev.cmdBridgeUrl 为空），不轮询', scope: 'bg', ts: Date.now() });
+let bridgePolling = false;
+let bridgeSettingsWarned = false;
+setInterval(async function () {
+  if (bridgePolling) return;
+  bridgePolling = true;
+  try {
+    const cfg = await getConfig();
+    const connection = bridgeConnection(cfg);
+    if (!connection && cfg.dev.cmdBridge === true) {
+      if (!bridgeSettingsWarned) {
+        bridgeSettingsWarned = true;
+        logs.push({ level: 'warn', text: '命令桥需要有效的本机地址和令牌', scope: 'bg', ts: Date.now() });
         if (logs.length > LOG_MAX) logs = logs.slice(-LOG_MAX);
-        try { chrome.storage.session.set({ cxLogs: logs.slice(-80) }).catch(function () {}); } catch (e) {}
+        await chrome.storage.session.set({ cxLogs: logs.slice(-80) });
       }
       return;
     }
-    cmdBridgeNoUrlWarned = false;
-    cmdBridgeBaseUrl = base;
-    return cmdBridgeTick(base);
-  }).catch(function () {});
+    bridgeSettingsWarned = false;
+    if (connection) await cmdBridgeTick(connection);
+  } catch (e) {
+    /* 调试服务可以随时关闭，等下次轮询。 */
+  } finally {
+    bridgePolling = false;
+  }
 }, 1200);
 
 /* 保证闹钟一定存在（onInstalled 不一定触发，SW 靠它定期醒来跑上面的轮询） */

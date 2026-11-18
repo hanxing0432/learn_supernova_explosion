@@ -17,13 +17,12 @@
     attempts: 0,
     /* 跨题面的总尝试数：不随 mark 变化重置，用来兜住"站点反复重新弹题"的死循环 */
     totalAttempts: 0,
+    aiFailed: false,
     gaveUpAt: 0
   };
 
   function cfg() { return CX.cfg.videoQuiz || {}; }
 
-  /* 2026-11-06：AI 总开关关掉时不再改走枚举 —— 选了「AI 优先」就按 AI 走，
-   * 真没开就由调用方提示并停手（见 ensureAiOrWarn()）。 */
   function effMode() {
     const m = cfg().mode || 'ai-first';
     if (m === 'off') return 'off';
@@ -35,6 +34,21 @@
   function aiReady() {
     return !(CX.cfg.ai && CX.cfg.ai.enabled === false);
   }
+
+  function settingsKey(config) {
+    const quiz = config.videoQuiz || {};
+    return JSON.stringify([config.enabled, quiz.enabled, quiz.mode, config.ai]);
+  }
+
+  let lastSettings = settingsKey(CX.cfg);
+  let revision = 0;
+  CX.onConfig(function (config) {
+    const next = settingsKey(config);
+    if (next === lastSettings) return;
+    lastSettings = next;
+    revision++;
+    st.aiFailed = false;
+  });
 
   function combos(n) {
     const out = [];
@@ -74,7 +88,11 @@
     if (!ans) return null;
     let choices = ans.choices || ans.answer || [];
     if (typeof choices === 'string') choices = choices.toUpperCase().replace(/[^A-Z]/g, '').split('');
-    choices = (Array.isArray(choices) ? choices : [choices]).map(function (c) { return String(c).toUpperCase(); }).filter(Boolean);
+    const labels = new Set(q.options.map(function (option) { return option.label; }));
+    choices = (Array.isArray(choices) ? choices : [choices])
+      .map(function (c) { return String(c).trim().toUpperCase(); })
+      .filter(function (choice) { return labels.has(choice); });
+    choices = Array.from(new Set(choices));
     if (q.type !== 'multi') choices = choices.slice(0, 1);
     return choices.length ? choices : null;
   }
@@ -100,8 +118,8 @@
     } catch (e) {}
   }
 
-  async function clickContinue(q) {
-    if (cfg().autoContinue === false) return;
+  async function clickContinue(q, active) {
+    if (!active() || cfg().autoContinue === false) return;
     const scope = (q && q.box) || root.document;
     const btn = P.findContinueButton(scope) || P.findContinueButton(root.document);
     if (btn) {
@@ -109,10 +127,11 @@
       CX.info('已点击「继续学习」');
       await CX.sleep(600);
     }
+    if (!active()) return;
     /* 有些版本是关闭弹层 */
     const close = CX.qa('.ans-videoquiz-close, .close-videoquiz, .layui-layer-close', scope);
     if (close && CX.visible(close)) { CX.click(close); await CX.sleep(300); }
-    restorePlayback();
+    if (active()) restorePlayback();
   }
 
   async function handle(q) {
@@ -124,6 +143,7 @@
       st.tried = [];
       st.lastResult = '';
       st.attempts = 0;
+      st.aiFailed = false;
       /* 新题：先把播放暂停记下来，答完恢复 */
       try { st.savedPlayback = CX.player && CX.player.qVideo() ? { t: CX.player.qVideo().currentTime } : null; } catch (e) {}
     }
@@ -133,49 +153,64 @@
     /* AI 关着却选了 AI 优先：直接不作答，不偷偷用枚举顶替 */
     if (mode === 'ai-first' && !aiReady()) return;
 
+    const started = revision;
+    const active = function () {
+      return revision === started && CX.cfg.enabled && cfg().enabled && effMode() === mode &&
+        (mode !== 'ai-first' || aiReady()) && q.box.isConnected !== false;
+    };
+    const maxAiRounds = Number(cfg().maxAiRounds || 3);
+    const maxBruteTries = Number(cfg().bruteMaxTries || 10);
+    let submitted = false;
     st.busy = true;
     try {
       /* 已答对：直接继续 */
       if (q.result === 'right') {
         CX.status('弹题已通过，继续学习', { busy: true, phase: 'quiz' });
-        await clickContinue(q);
+        await clickContinue(q, active);
         return;
       }
 
       let choices = null;
 
-      if (mode === 'ai-first' && st.rounds < (cfg().maxAiRounds || 3)) {
+      if (mode === 'ai-first') {
+        if (st.aiFailed || st.rounds >= maxAiRounds) return;
         CX.status('AI 正在作答弹题（' + q.typeText + '）', { busy: true, phase: 'quiz' });
         const feedback = st.tried.length ? { wrongAttempts: st.tried } : null;
         choices = await askAi(q, feedback);
-        if (choices) st.rounds++;
-      }
-
-      if (!choices) {
-        /* 暴力兜底 */
+        if (!active()) return;
+        if (!choices) {
+          st.aiFailed = true;
+          CX.status('AI 未返回有效弹题答案，请检查 AI 设置或手动作答', { busy: false, phase: 'quiz' });
+          return;
+        }
+      } else {
+        if (st.attempts >= maxBruteTries) return;
         if (q.type === 'multi') {
           const all = combos(q.options.length);
-          const next = all[st.bruteIndex] || all[0];
-          st.bruteIndex++;
-          choices = next;
+          choices = all[st.bruteIndex] || all[0];
         } else if (q.type === 'judge' || q.options.length === 2) {
           const order = ['A', 'B'];
-          choices = [order[(st.bruteIndex++) % 2]];
+          choices = [order[st.bruteIndex % 2]];
         } else {
           const n = q.options.length || 4;
           const order = P.LETTERS.slice(0, n).split('');
-          choices = [order[(st.bruteIndex++) % n]];
+          choices = [order[st.bruteIndex % n]];
         }
         CX.status('按顺序试答（' + q.typeText + '）', { busy: true, phase: 'quiz' });
       }
 
-      st.tried.push(choices.join(''));
-      st.attempts++;
-      st.totalAttempts++;
-
+      if (!active() || !choices || !choices.length) return;
       CX.info('弹题作答：' + q.typeText + ' → ' + choices.join(''));
       P.applyChoices(q, choices);
       await CX.sleep(CX.jitter(cfg().submitWaitMs || 260, 0.35));
+      if (!active()) return;
+
+      if (mode === 'ai-first') st.rounds++;
+      else st.bruteIndex++;
+      st.tried.push(choices.join(''));
+      st.attempts++;
+      st.totalAttempts++;
+      submitted = true;
 
       /* 提交 */
       const submit = CX.firstOf(P.SEL.videoQuizSubmit, q.box) || P.findSubmitButton(q.box) || q.submit;
@@ -206,7 +241,7 @@
       if (result === 'right') {
         CX.status('弹题答对 ✔', { busy: true, phase: 'quiz' });
         CX.rememberAnswer('vq:' + q.mark, choices);
-        await clickContinue(q);
+        await clickContinue(q, active);
       } else if (result === 'wrong') {
         CX.warn('弹题答错，换一个答案重试');
         CX.status('弹题答错，重试中…', { busy: true, phase: 'quiz' });
@@ -223,13 +258,15 @@
       /* 刹车：单题失败次数用配置里的 bruteMaxTries（原来硬编码 24，配置项形同虚设），
        * 另外加一个"跨题面"的总上限 —— 站点答错后会重新弹题，mark 一变 attempts 就归零，
        * 没有总上限就会无限转（实测 C→D→A→B 每秒一轮停不下来）。 */
-      const maxTry = Number(cfg().bruteMaxTries || 10);
-      if (st.lastResult !== 'right' && st.attempts < maxTry && st.totalAttempts < 40) {
-        setTimeout(function () { if (!st.busy) tick(); }, 60);
-      } else if (st.lastResult !== 'right') {
-        st.gaveUpAt = Date.now();
-        CX.warn('弹题连续尝试 ' + st.totalAttempts + ' 次仍未通过，停止自动枚举（这道题需要人工确认）');
-        CX.status('⚠ 弹题自动作答失败，请人工处理', { busy: false, phase: 'quiz' });
+      if (submitted && active() && st.lastResult !== 'right') {
+        const capped = mode === 'ai-first' ? st.rounds >= maxAiRounds : st.attempts >= maxBruteTries;
+        if (capped || st.totalAttempts >= 40) {
+          st.gaveUpAt = Date.now();
+          CX.warn('弹题达到尝试上限，请人工处理');
+          CX.status('⚠ 弹题自动作答失败，请人工处理', { busy: false, phase: 'quiz' });
+        } else {
+          setTimeout(function () { if (!st.busy) tick(); }, 60);
+        }
       }
     }
   }

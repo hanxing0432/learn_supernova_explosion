@@ -3,7 +3,7 @@
 > **几乎是目前针对超星学习通最强的一体化插件。**
 > 不是「能点下一节」的小脚本，而是一整套把课程跑完的自动化：视频不暂停、弹题自动答、测验按任务点判过、章节按目录标记智能跳转，连被站点加密的题目字体都能还原成可复制的明文。
 
-`v1.5.4` · GPL-3.0 · 115 项本地断言 · 20945 字字形字典 · Edge / Chrome 111+
+GPL-3.0 · 115 项 Edge 本地断言 · 20945 字字形字典 · Edge / Chrome 111+ · Firefox 128+
 
 ## 为什么说它强
 
@@ -56,7 +56,7 @@
 
 - 一个 **Manifest V3** 浏览器扩展，只注入 `*.chaoxing.com`。
 - 做四件事：把视频放完 → 弹题答对 → 测验做过 → 自动切下一章。
-- 答题能力不内置题库，全部走**你自己配置的** OpenAI 兼容接口（也可以接本地 Ollama，内容不出本机）。
+- AI 答题走**你自己配置的** OpenAI 兼容接口，可以使用本地 Ollama。联网检索有单独的设置开关。
 - 附带一套零依赖本地测试台（仿真页面 + Mock AI），不需要账号就能验证大部分逻辑。
 
 ## 功能一览
@@ -69,7 +69,7 @@
 | 视频自动播放（`volume=0` 而非 muted） | `extension/content/player.js` | 内核在页面隐藏时只暂停「一直静音」的视频，音量 0 可绕过 |
 | 无音轨视频 `captureStream` 保活镜像 | `extension/content/player.js` | 后台 / 最小化不被内核暂停 |
 | 暂停即续播看门狗 + 站点 `resumePlay` 通道 | `extension/content/player.js` | 三层兜底 |
-| 视频内弹题自动作答（判断 / 单选 / 多选） | `extension/content/videoquiz.js` | 先问 AI，AI 调用失败才退回组合枚举 |
+| 视频内弹题自动作答（判断 / 单选 / 多选） | `extension/content/videoquiz.js` | 「AI 优先」遇到接口失败时暂停作答，等待检查设置或手动处理 |
 | 答对后自动点「继续学习」并恢复播放 | `extension/content/videoquiz.js` | — |
 | 学习检测 / 章节测验 AI 答题 | `extension/content/exam.js` | 解析 → 填答 → 提交 → 判分 → 只重做「判错 + 半对」 |
 | 判分归属校验 | `extension/content/exam.js` | 判分页没更新到本轮就整轮作废，不会拿上一轮的勾叉改答案 |
@@ -90,22 +90,30 @@
 
 ## 安装
 
-### 方式 A：下载 Release 压缩包（推荐）
+从 [GitHub Releases](https://github.com/hanxing0432/learn_supernova_explosion/releases) 选择适合浏览器的安装附件。
 
-1. 到本仓库的 **Releases** 页面下载 `chaoxing-helper-v1.4.4.zip`，解压。
-2. 浏览器地址栏打开 `edge://extensions`（Chrome：`chrome://extensions`），开启右上角「开发人员模式」。
-3. 点「加载解压缩的扩展」，选择解压出来的文件夹（有 `manifest.json` 的那一层）。
-4. 点扩展图标 →「高级设置」→「AI 接口」→ 填 Base URL / API Key / 模型名 → 「测试 AI 连接」。
+### Edge / Chrome
 
-### 方式 B：直接从源码加载
+1. 下载 Edge / Chrome 的 ZIP 附件并解压。
+2. 打开 `edge://extensions` 或 `chrome://extensions`，开启「开发人员模式」。
+3. 点「加载解压缩的扩展」，选择包含 `manifest.json` 的文件夹，再刷新学习页面。
+
+更新时，将新版文件解压到原加载目录，在扩展管理页点击「重新加载」，再刷新学习页面。
+
+### Firefox
+
+- **长期安装**：如果 Release 提供 Mozilla 签名的 `.xpi`，下载后打开 `about:addons`，在齿轮菜单选择「从文件安装附加组件」，然后选择该文件。 [Firefox 自行分发安装说明](https://extensionworkshop.com/documentation/publish/self-distribution/)
+- **临时试用**：解压 Firefox 开发包，或按下一节从源码生成。打开 `about:debugging#/runtime/this-firefox`，点击「临时载入附加组件」，选择 Firefox 构建目录中的 `manifest.json`，再刷新学习页面。重启 Firefox 后需要重新载入。 [Firefox 临时安装说明](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/)
+
+### 从源码加载
 
 ```bash
-git clone <this-repo> chaoxing-helper
+git clone https://github.com/hanxing0432/learn_supernova_explosion.git
+cd learn_supernova_explosion
 ```
 
-然后同上，第 3 步选仓库里的 `extension/` 目录。
-
-> 更新版本时：把新压缩包解压**覆盖**原文件夹，再到 `edge://extensions` 点一次「重新加载」，最后刷新学习页（旧标签是孤儿脚本）。
+- Edge / Chrome 直接加载 `extension/` 文件夹。
+- Firefox 执行 `node tools/make-firefox-build.mjs`，再临时载入 `_dist/学习通插件-Firefox/manifest.json`。
 
 ## 日常使用
 
@@ -126,9 +134,11 @@ git clone <this-repo> chaoxing-helper
 
 1. 点扩展图标 →「高级设置」→ 找到「AI 接口」卡片；
 2. 选服务商（或直接填 Base URL）、填 API Key、选模型（「拉取」会按你填的地址列出该 Key 可用的模型）；
-3. 点页面顶部「测试 AI 连接」，出现绿色通过即可 —— 设置是**即时保存**的，没有“保存”按钮；
+3. 点页面顶部「测试 AI 连接」，确认接口能正常响应。修改设置后会自动保存；
 4. 接口不支持 `response_format` 时，把「使用 JSON 模式」关掉；
 5. 用 `127.0.0.1` / `localhost` 的本地模型可以不填 Key。
+
+启用 AI 答题并选择「AI 优先」时，如果接口需要 Key 却没有填写，浮窗会显示「AI 答题缺少 API Key」。点击「去设置」可打开设置页，保存 Key 后提示会自动消失。
 
 ### 2. 开始一节课
 
@@ -208,7 +218,7 @@ git clone <this-repo> chaoxing-helper
 
 | 现象 | 原因 |
 |---|---|
-| 浮窗提示「⚠ 未配置 AI Key」 | 没填 Key 或 Base URL 不对，自动答题会跳过 |
+| 浮窗提示「AI 答题缺少 API Key」 | 点击「去设置」，在「AI 接口」里填写 Key 并测试连接 |
 | 站点弹出验证码 / 提交次数上限 | 提交太频繁，扩展会刹车，需要你手动处理 |
 | 「今日视频任务点已达上限」 | 平台限制，能播但不计进度，只能等次日 |
 | 正式考试页 | 默认不碰（设置里可开，风险自担） |
@@ -245,35 +255,31 @@ git clone <this-repo> chaoxing-helper
 
 ### 3. 本地命令桥
 
-用于本机排查：让扩展每 1.2 秒向一个本地 HTTP 服务取命令，把日志/探针回传。
+用于本机排查。命令桥只接受本机地址，扩展和调试客户端使用同一个令牌。
 
-1. 设置页 →「调试模式」打开 →「本地命令桥」打开；
-2. 「命令桥地址」填 `http://127.0.0.1:8765`（**默认是空的，等于完全不轮询**）；
-3. 本机起服务：`node tools/_cmd-bridge.mjs`；
-4. 用 curl 发命令，例如：
+在项目目录打开 PowerShell，生成本次令牌并启动服务。
 
-```bash
-curl "http://127.0.0.1:8765/ping"
-curl "http://127.0.0.1:8765/run?cmd=logs&arg=200"
-curl "http://127.0.0.1:8765/run?cmd=stats&tabId=<标签页 id>"
-curl "http://127.0.0.1:8765/run?cmd=tabs"
+```powershell
+$env:CMD_BRIDGE_TOKEN = node -p "require('node:crypto').randomBytes(32).toString('hex')"
+Write-Output $env:CMD_BRIDGE_TOKEN
+node tools/_cmd-bridge.mjs
 ```
+
+在扩展设置的「调试」中填写地址 `http://127.0.0.1:8765` 和终端显示的令牌，再启用命令桥。调试客户端发请求时使用 `Authorization: Bearer <同一个令牌>` 请求头。
 
 可用命令：
 
 | 命令 | 作用 | 是否只读 |
 |---|---|---|
 | `logs [n]` | 后台日志环 | ✅ |
-| `tabs` | 列出标签页 | ✅ |
+| `tabs` | 列出学习通标签页 | ✅ |
 | `stats [tabId]` | 各帧的字体/字形表状态 | ✅ |
 | `q [tabId]` | 题目原文 vs 解码后文本 | ✅ |
 | `raw` / `fonts` | 加密文本 / `@font-face` 摘要 | ✅ |
 | `coldtest` | 逐字对比「字典 vs 逆查」 | ✅ |
 | `setdict` / `getdict` | 读写字形字典 | ⚠️ 写 |
-| `open` | 打开一个 URL | ⚠️ 写 |
+| `open` | 打开学习通 URL | ⚠️ 写 |
 | `resetexam` | 清掉本次测验的作答记忆（轮数用尽/脏历史时用） | ⚠️ 写 |
-
-> 桥**没有认证**、还带 `access-control-allow-origin: *`，只在你自己机器上开、用完就关掉开关。
 
 ### 4. 字体样本采集器
 
@@ -339,14 +345,14 @@ node tools/run-test.mjs ui|hud|antipause|exam|exam-li|video-quiz|nav|quiz-entry|
 | 到末尾不停 | 日志有没有「等 N 秒确认是否到课程末尾」 | 没有 → 页面里其实还有目录项；有 → 看是否被 12 秒宽限挡住 |
 | 题目是乱码 | 桥 `stats` / `q` | 字形表没就绪（看 `src`/`nz`）或字典缺字，用采集器补样本 |
 | 浮窗不出现 | 是否在 `*.chaoxing.com` 页面 | 其他域名不注入；刷新一次 |
-| 命令桥没反应 | `curl .../ping` | 桥没起 / 开关没开 / 地址没填 |
+| 命令桥没反应 | 用带令牌的请求检查 `/ping` | 检查本地服务、开关、地址和令牌是否匹配 |
 | 设置改了没生效 | 是否需要刷新 | 「防暂停」类改动必须 F5；其余即时生效 |
 
 ### 7. 调试时的隐私注意
 
 - 日志会包含题目文本、章节名，`debug` 级别还会打印判分原文 —— 贴出去前先自己过一遍；
-- 导出的配置文件里 API Key 是 `***`，但**日志/截图**可能带 Key 以外的信息，注意别把整页截图发出去；
-- 命令桥开着时，本机任何进程都能驱动扩展，用完就关。
+- 导出的配置文件会省略 AI Key、额外请求头和命令桥令牌。分享日志或截图前，先去掉其中的课程或账号信息。
+- 命令桥令牌只在本机使用，调试结束后可以关闭命令桥。
 
 ## 工作流程
 
@@ -418,6 +424,7 @@ extension/
 tools/
   mock-server.mjs         仿真页面 + Mock OpenAI 接口
   make-test-build.mjs     生成测试版扩展
+  make-firefox-build.mjs  生成 Firefox 版扩展
   run-test.mjs            CDP 端到端测试
   sample-server.mjs       字体样本收样服务
   aggregate-samples.mjs   样本汇总成字形字典
@@ -450,11 +457,11 @@ docs/images/              README 用图
 - **浏览器会降频后台标签页**：插件已用音量 0 + 伪造可见性保活，但「睡眠标签页 / 效率模式」只能自己在 `edge://settings/system` 关掉或加白名单。
 - **不自动处理「笔记未保存」弹窗**：点它反而会卡住导航。
 - **页面结构变更**：解析器对常见结构都做了兜底；真遇到不认识的页面，把日志级别调成 `debug`，日志里的「结构探针」会给出容器命中数、输入框数量、提交按钮、body 长度。
-- **正式考试默认不自动作答**（设置里可开）。
+- **正式考试**：作答默认关闭，目前页面上的「开始考试」按钮仍可能被自动点击。进入正式考试前请先暂停扩展。
 
 ## 版本
 
-当前 `1.5.4`。改动见 [CHANGELOG.md](CHANGELOG.md)。
+发布版本和安装包见 [GitHub Releases](https://github.com/hanxing0432/learn_supernova_explosion/releases)，历史改动见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 
@@ -483,8 +490,8 @@ docs/images/              README 用图
 **三、数据处理**
 
 - 扩展只在本机浏览器内运行，**不含任何统计、遥测或上报代码**，可自行审查 `extension/` 下全部源码。
-- 你填写的 API Key 只保存在本机 `chrome.storage.local`；导出配置时 Key 会被替换成 `***`，不会随文件外泄。
-- 题目文本只会发送到**你自己配置的** AI 接口。使用云端服务商时请自行阅读其隐私条款；想让内容完全不出本机，请使用本地模型（如 Ollama）。
+- API Key 保存在本机扩展存储中，调用你配置的 AI 接口时用于认证。导出配置会省略 AI Key、额外请求头和命令桥令牌。
+- AI 作答会把题目和选项发给你配置的接口。启用联网检索或点击题目搜索时，题干关键词会发给对应的搜索服务。希望题目数据留在本机时，请使用本地模型、关闭联网检索，并通过「复制」功能在本机查看题目。
 
 **四、第三方组件与权利**
 
